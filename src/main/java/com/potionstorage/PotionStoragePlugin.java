@@ -22,13 +22,13 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.storedpots;
+package com.potionstorage;
 
 import com.google.inject.Provides;
-import com.storedpots.PotionStore.Stack;
-import static com.storedpots.BankWidgets.BANKTAB_POTIONSTORE;
-import static com.storedpots.BankWidgets.LAST_WITHDRAW_OP;
-import static com.storedpots.BankWidgets.isWidgetOp;
+import com.potionstorage.PotionStore.Stack;
+import static com.potionstorage.BankWidgets.BANKTAB_POTIONSTORE;
+import static com.potionstorage.BankWidgets.LAST_WITHDRAW_OP;
+import static com.potionstorage.BankWidgets.isWidgetOp;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -104,11 +104,11 @@ import net.runelite.client.util.Text;
  */
 @Slf4j
 @PluginDescriptor(
-	name = "Stored Pots",
+	name = "Potion Storage",
 	description = "Shows potion storage in the bank as normal items: in every tab, in searches and tag tabs, movable and withdrawable, without using bank space",
 	tags = {"bank", "potion", "pots", "storage", "tags", "layout"}
 )
-public class StoredPotsPlugin extends Plugin
+public class PotionStoragePlugin extends Plugin
 {
 	private static final String SEARCH_TITLE = "Showing items:";
 	/** The Bank Tags plugin's option for taking an item out of the open tag; it may carry the tag's name after. */
@@ -140,7 +140,7 @@ public class StoredPotsPlugin extends Plugin
 	private BankSearch bankSearch;
 
 	@Inject
-	private StoredPotsConfig config;
+	private PotionStorageConfig config;
 
 	@Inject
 	private EventBus eventBus;
@@ -186,9 +186,9 @@ public class StoredPotsPlugin extends Plugin
 	}
 
 	@Provides
-	StoredPotsConfig provideConfig(ConfigManager configManager)
+	PotionStorageConfig provideConfig(ConfigManager configManager)
 	{
-		return configManager.getConfig(StoredPotsConfig.class);
+		return configManager.getConfig(PotionStorageConfig.class);
 	}
 
 	@Override
@@ -234,7 +234,7 @@ public class StoredPotsPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged e)
 	{
-		if (StoredPotsConfig.GROUP.equals(e.getGroup()) && !SavedOrder.isOwnKey(e.getKey()))
+		if (PotionStorageConfig.GROUP.equals(e.getGroup()) && !SavedOrder.isOwnKey(e.getKey()))
 		{
 			relayout();
 			clientThread.invokeLater(panel::refresh);

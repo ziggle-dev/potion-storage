@@ -1,4 +1,4 @@
-# Stored Pots
+# Potion Storage
 
 A RuneLite plugin that shows the bank's potion storage as ordinary bank items. Stored potions appear in
 "View all items" and the numbered tabs, in bank searches and in tag tabs. You can drag them around and swap
@@ -72,6 +72,6 @@ with its parent and says in its description which setting it depends on.
 
 ```
 ./gradlew test            # unit tests
-./gradlew shadowJar       # build/libs/stored-pots-1.0.0-all.jar
-java -ea -jar build/libs/stored-pots-1.0.0-all.jar   # RuneLite with the plugin loaded
+./gradlew shadowJar       # build/libs/potion-storage-1.0.0-all.jar
+java -ea -jar build/libs/potion-storage-1.0.0-all.jar   # RuneLite with the plugin loaded
 ```

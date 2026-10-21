@@ -1,4 +1,4 @@
-package com.storedpots;
+package com.potionstorage;
 
 import static org.junit.Assert.assertEquals;
 import org.junit.Test;

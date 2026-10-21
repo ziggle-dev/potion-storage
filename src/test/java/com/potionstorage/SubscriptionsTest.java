@@ -1,4 +1,4 @@
-package com.storedpots;
+package com.potionstorage;
 
 import net.runelite.client.eventbus.EventBus;
 import org.junit.Test;
@@ -12,6 +12,6 @@ public class SubscriptionsTest
 	@Test
 	public void theEventBusAcceptsEverySubscriber()
 	{
-		new EventBus().register(new StoredPotsPlugin());
+		new EventBus().register(new PotionStoragePlugin());
 	}
 }

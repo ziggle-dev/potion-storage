@@ -22,32 +22,32 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.storedpots;
+package com.potionstorage;
 
-import com.storedpots.BankArrangement.Entry;
-import com.storedpots.PotionStore.Stack;
-import static com.storedpots.BankWidgets.CELL_W;
-import static com.storedpots.BankWidgets.DOSES;
-import static com.storedpots.BankWidgets.DOSES_OP;
-import static com.storedpots.BankWidgets.EMPTY_OPACITY;
-import static com.storedpots.BankWidgets.ITEM_CHILDREN;
-import static com.storedpots.BankWidgets.ITEM_H;
-import static com.storedpots.BankWidgets.ITEM_START_X;
-import static com.storedpots.BankWidgets.ITEM_W;
-import static com.storedpots.BankWidgets.LABEL_BASE;
-import static com.storedpots.BankWidgets.LINE_ABOVE;
-import static com.storedpots.BankWidgets.PER_ROW;
-import static com.storedpots.BankWidgets.ROW;
-import static com.storedpots.BankWidgets.SECTIONS;
-import static com.storedpots.BankWidgets.SECTION_GAP;
-import static com.storedpots.BankWidgets.SEPARATOR_BASE;
-import static com.storedpots.BankWidgets.STRIP_BASE;
-import static com.storedpots.BankWidgets.WITHDRAW;
-import static com.storedpots.BankWidgets.WITHDRAW_ALL_BUT_ONE;
-import static com.storedpots.BankWidgets.cellX;
-import static com.storedpots.BankWidgets.cellY;
-import static com.storedpots.BankWidgets.place;
-import static com.storedpots.BankWidgets.rows;
+import com.potionstorage.BankArrangement.Entry;
+import com.potionstorage.PotionStore.Stack;
+import static com.potionstorage.BankWidgets.CELL_W;
+import static com.potionstorage.BankWidgets.DOSES;
+import static com.potionstorage.BankWidgets.DOSES_OP;
+import static com.potionstorage.BankWidgets.EMPTY_OPACITY;
+import static com.potionstorage.BankWidgets.ITEM_CHILDREN;
+import static com.potionstorage.BankWidgets.ITEM_H;
+import static com.potionstorage.BankWidgets.ITEM_START_X;
+import static com.potionstorage.BankWidgets.ITEM_W;
+import static com.potionstorage.BankWidgets.LABEL_BASE;
+import static com.potionstorage.BankWidgets.LINE_ABOVE;
+import static com.potionstorage.BankWidgets.PER_ROW;
+import static com.potionstorage.BankWidgets.ROW;
+import static com.potionstorage.BankWidgets.SECTIONS;
+import static com.potionstorage.BankWidgets.SECTION_GAP;
+import static com.potionstorage.BankWidgets.SEPARATOR_BASE;
+import static com.potionstorage.BankWidgets.STRIP_BASE;
+import static com.potionstorage.BankWidgets.WITHDRAW;
+import static com.potionstorage.BankWidgets.WITHDRAW_ALL_BUT_ONE;
+import static com.potionstorage.BankWidgets.cellX;
+import static com.potionstorage.BankWidgets.cellY;
+import static com.potionstorage.BankWidgets.place;
+import static com.potionstorage.BankWidgets.rows;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -116,10 +116,10 @@ final class BankView
 	}
 
 	private final Client client;
-	private final StoredPotsConfig config;
+	private final PotionStorageConfig config;
 	private final SavedOrder savedOrder;
 
-	BankView(Client client, StoredPotsConfig config, SavedOrder savedOrder)
+	BankView(Client client, PotionStorageConfig config, SavedOrder savedOrder)
 	{
 		this.client = client;
 		this.config = config;

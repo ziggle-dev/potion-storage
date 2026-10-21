@@ -22,15 +22,15 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.storedpots;
+package com.potionstorage;
 
-import com.storedpots.BankArrangement.Drop;
-import com.storedpots.BankArrangement.Entry;
-import com.storedpots.BankArrangement.Pos;
-import static com.storedpots.BankWidgets.ITEM_CHILDREN;
-import static com.storedpots.BankWidgets.SECTIONS;
-import static com.storedpots.BankWidgets.STRIP_BASE;
-import static com.storedpots.BankWidgets.TAB_BUTTON_BASE;
+import com.potionstorage.BankArrangement.Drop;
+import com.potionstorage.BankArrangement.Entry;
+import com.potionstorage.BankArrangement.Pos;
+import static com.potionstorage.BankWidgets.ITEM_CHILDREN;
+import static com.potionstorage.BankWidgets.SECTIONS;
+import static com.potionstorage.BankWidgets.STRIP_BASE;
+import static com.potionstorage.BankWidgets.TAB_BUTTON_BASE;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.gameval.InterfaceID;

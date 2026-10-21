@@ -22,10 +22,10 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.storedpots;
+package com.potionstorage;
 
-import com.storedpots.BankArrangement.Entry;
-import com.storedpots.BankArrangement.Pos;
+import com.potionstorage.BankArrangement.Entry;
+import com.potionstorage.BankArrangement.Pos;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -129,14 +129,14 @@ final class SavedOrder
 
 	private String get(String key)
 	{
-		return account == null ? null : configManager.getRSProfileConfiguration(StoredPotsConfig.GROUP, key);
+		return account == null ? null : configManager.getRSProfileConfiguration(PotionStorageConfig.GROUP, key);
 	}
 
 	private void put(String key, String value)
 	{
 		if (account != null && !value.equals(get(key)))
 		{
-			configManager.setRSProfileConfiguration(StoredPotsConfig.GROUP, key, value);
+			configManager.setRSProfileConfiguration(PotionStorageConfig.GROUP, key, value);
 		}
 	}
 }

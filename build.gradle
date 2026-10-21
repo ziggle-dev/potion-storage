@@ -14,7 +14,7 @@ repositories {
 }
 
 def runeLiteVersion = 'latest.release'
-def pluginMainClass = 'com.storedpots.StoredPotsPluginTest'
+def pluginMainClass = 'com.potionstorage.PotionStoragePluginTest'
 
 dependencies {
 	compileOnly "net.runelite:client:$runeLiteVersion"
@@ -27,7 +27,7 @@ dependencies {
 	testImplementation "net.runelite:jshell:$runeLiteVersion"
 }
 
-group = 'com.storedpots'
+group = 'com.potionstorage'
 version = '1.0.0'
 
 tasks.withType(JavaCompile).configureEach {
