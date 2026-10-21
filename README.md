@@ -5,6 +5,28 @@ A RuneLite plugin that shows the bank's potion storage as ordinary bank items. S
 them with other items, and withdraw from them like any other stack. They take up no bank space: every click
 still withdraws from potion storage.
 
+## In action
+
+**Stored potions in a bank tab**, with **Show in the bank** turned off and back on:
+
+![Stored potions shown among the items of a bank tab](docs/show-in-bank.gif)
+
+**Withdrawing** straight from the bank tab, as from any bank stack:
+
+![Withdrawing stored potions from a bank tab](docs/withdraw.gif)
+
+**Depositing** potions back, with the game's *Always deposit to potion storage* setting:
+
+![Depositing potions back into potion storage](docs/deposit.gif)
+
+**Tag tabs**: dragging a potion from potion storage onto a tag tab, and its menu in a laid-out tab:
+
+![Tagging a stored potion and using it in a laid-out tag tab](docs/tag-tabs.gif)
+
+**Searches**: stored potions listed under the tab each is in, then moved about in their tab:
+
+![A bank search showing stored potions under their tabs](docs/search.gif)
+
 ## What it does
 
 - **In the bank and its tabs.** Stored potions start at the end of the untabbed section. Drag one anywhere,
