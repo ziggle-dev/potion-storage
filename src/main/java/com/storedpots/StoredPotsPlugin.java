@@ -1,0 +1,655 @@
+/*
+ * Copyright (c) 2026, ziggle-dev
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+package com.storedpots;
+
+import com.google.inject.Provides;
+import com.storedpots.PotionStore.Stack;
+import static com.storedpots.BankWidgets.BANKTAB_POTIONSTORE;
+import static com.storedpots.BankWidgets.LAST_WITHDRAW_OP;
+import static com.storedpots.BankWidgets.isWidgetOp;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
+import net.runelite.api.ItemContainer;
+import net.runelite.api.MenuAction;
+import net.runelite.api.MenuEntry;
+import net.runelite.api.ScriptID;
+import net.runelite.api.events.ClientTick;
+import net.runelite.api.events.GameTick;
+import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.PostMenuSort;
+import net.runelite.api.events.ScriptPostFired;
+import net.runelite.api.events.ScriptPreFired;
+import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.events.WidgetClosed;
+import net.runelite.api.events.WidgetDrag;
+import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.VarClientID;
+import net.runelite.api.gameval.VarbitID;
+import net.runelite.api.widgets.Widget;
+import net.runelite.client.callback.ClientThread;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.EventBus;
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.PluginChanged;
+import net.runelite.client.game.ItemManager;
+import net.runelite.client.game.chatbox.ChatboxPanelManager;
+import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.PluginManager;
+import net.runelite.client.plugins.bank.BankSearch;
+import net.runelite.client.plugins.banktags.BankTag;
+import net.runelite.client.plugins.banktags.BankTagsPlugin;
+import net.runelite.client.plugins.banktags.tabs.Layout;
+import net.runelite.client.util.Text;
+
+/**
+ * The potion store, drawn into the bank as ordinary stacks - no slot of their own, the store's stock behind
+ * every click.
+ * <p>
+ * The bank's item list is 1,410 widgets, one per bank slot, and every slot past the bank's last item is a
+ * spare that the game already accepts clicks and drags on; a stored stack is drawn on one of those
+ * ({@link BankView}). Its withdraw options are pointed at the potion store's own button when clicked - the
+ * same rewrite the Bank Tags plugin makes for stored potions in a laid-out tag tab - so the game receives
+ * exactly the click a player makes inside the potion store.
+ * <p>
+ * Four views:
+ * <ul>
+ * <li>The bank itself ("View all items" and the numbered tabs): every stack, real and stored, is laid out in
+ * the saved order ({@link SavedOrder}), and drags rearrange it ({@link BankDrags}).</li>
+ * <li>A search: the game draws what matches, and each tab's matching stored stacks are added to it.</li>
+ * <li>A tag tab without a layout: the matching stored stacks go after what the game drew.</li>
+ * <li>A laid-out tag tab: the Bank Tags plugin draws and withdraws stored potions there itself, but only ones
+ * its layout already holds; a stored potion tagged since is given a place first.</li>
+ * </ul>
+ * With "Combine with bank stacks" on, a potion the bank holds too is not drawn twice: the bank's stack shows
+ * both counts, and withdraws from whichever the setting says first. Potion storage's own panel gets
+ * Edit-tags, and draggable copies of its icons to drop on a tag tab ({@link StorePanel}).
+ * <p>
+ * What is drawn is resolved on a copy; what is saved waits for a settled bank. The server's new item order
+ * and its new tab sizes do not always reach a build together, and a build that sees one without the other
+ * puts every tab's edge item in the neighbouring tab. So a build only draws, and the order is learned on a
+ * game tick, once the bank has read the same for a whole tick.
+ */
+@Slf4j
+@PluginDescriptor(
+	name = "Stored Pots",
+	description = "Shows potion storage in the bank as normal items: in every tab, in searches and tag tabs, movable and withdrawable, without using bank space",
+	tags = {"bank", "potion", "pots", "storage", "tags", "layout"}
+)
+public class StoredPotsPlugin extends Plugin
+{
+	private static final String SEARCH_TITLE = "Showing items:";
+	/** The Bank Tags plugin's option for taking an item out of the open tag; it may carry the tag's name after. */
+	private static final String REMOVE_TAG = "Remove-tag";
+
+	/** Before the Bank Tags plugin (0), to put tagged stored potions into a layout it then draws. */
+	private static final int BEFORE_BANK_TAGS = 10;
+	/** After the Bank Tags plugin (0) and the Bank plugin (1), which lay out and price first. */
+	private static final int AFTER_BANK_TAGS = -10;
+	/** A rewritten click should be what any plugin later in line sees. */
+	private static final int EARLY = 1;
+
+	/** A full re-read of the store this often, whatever varp the store's own list does not name. */
+	private static final int STORE_REREAD_TICKS = 50;
+
+	@Inject
+	private Client client;
+
+	@Inject
+	private ClientThread clientThread;
+
+	@Inject
+	private ConfigManager configManager;
+
+	@Inject
+	private PluginManager pluginManager;
+
+	@Inject
+	private BankSearch bankSearch;
+
+	@Inject
+	private StoredPotsConfig config;
+
+	@Inject
+	private EventBus eventBus;
+
+	@Inject
+	private ItemManager itemManager;
+
+	@Inject
+	private ChatboxPanelManager chatboxPanelManager;
+
+	private PotionStore store;
+	private SavedOrder savedOrder;
+	private BankTagsBridge bankTags;
+	private BankView view;
+	private BankDrags drags;
+	private StorePanel panel;
+
+	/** What the last build drew. Client thread only. */
+	private Frame frame = new Frame(Frame.Mode.NONE);
+
+	// Learning the order.
+	private boolean learnPending;
+	private int bankSignature;
+	private int learnedSignature;
+
+	/**
+	 * The second listener for the same event, at its own priority. Registered by hand: the event bus takes
+	 * one {@code @Subscribe} method per event, named after it.
+	 */
+	private EventBus.Subscriber beforeBankTags;
+
+	/** Which part of the bank is on show, as far as stored stacks go. */
+	private enum View
+	{
+		/** No bank, or the potion store's own panel. */
+		NONE,
+		/** The Bank Tags plugin's grid of every tag: no items at all. */
+		TAG_GRID,
+		TAG_LAYOUT,
+		TAG_PLAIN,
+		SEARCH,
+		BANK
+	}
+
+	@Provides
+	StoredPotsConfig provideConfig(ConfigManager configManager)
+	{
+		return configManager.getConfig(StoredPotsConfig.class);
+	}
+
+	@Override
+	protected void startUp()
+	{
+		store = new PotionStore(client);
+		savedOrder = new SavedOrder(configManager);
+		bankTags = new BankTagsBridge(pluginManager, configManager, itemManager, chatboxPanelManager, clientThread);
+		view = new BankView(client, config, savedOrder);
+		drags = new BankDrags(client, savedOrder, this::relayout);
+		panel = new StorePanel(client, config, pluginManager, bankTags, this::relayout);
+		bankTags.refresh();
+		beforeBankTags = eventBus.register(ScriptPreFired.class, this::onScriptPreFiredBeforeBankTags, BEFORE_BANK_TAGS);
+		relayout();
+		clientThread.invokeLater(panel::refresh);
+	}
+
+	@Override
+	protected void shutDown()
+	{
+		eventBus.unregister(beforeBankTags);
+		clientThread.invokeLater(() ->
+		{
+			panel.remove();
+			resetSession();
+			savedOrder.reset();
+			layoutIfBankView();
+		});
+	}
+
+	/** Everything that lasts one bank session: what is drawn, the store as read, the drag, the copies, the learning. */
+	private void resetSession()
+	{
+		frame = new Frame(Frame.Mode.NONE);
+		store.reset();
+		drags.reset();
+		panel.reset();
+		learnPending = false;
+		bankSignature = 0;
+		learnedSignature = 0;
+	}
+
+	@Subscribe
+	public void onConfigChanged(ConfigChanged e)
+	{
+		if (StoredPotsConfig.GROUP.equals(e.getGroup()) && !SavedOrder.isOwnKey(e.getKey()))
+		{
+			relayout();
+			clientThread.invokeLater(panel::refresh);
+		}
+	}
+
+	/** The Bank Tags plugin, or the Potion Storage Customizer, may have come or gone. */
+	@Subscribe
+	public void onPluginChanged(PluginChanged e)
+	{
+		clientThread.invokeLater(() ->
+		{
+			bankTags.refresh();
+			panel.refresh();
+		});
+		relayout();
+	}
+
+	/** Draw the bank again, at the end of this frame. */
+	private void relayout()
+	{
+		clientThread.invokeLater(this::layoutIfBankView);
+	}
+
+	/** Never while the store's own panel is up: redrawing it rebuilds the buttons a click may be aimed at. */
+	private void layoutIfBankView()
+	{
+		if (bankShown() && client.getVarbitValue(VarbitID.BANK_CURRENTTAB) != BANKTAB_POTIONSTORE)
+		{
+			bankSearch.layoutBank();
+		}
+	}
+
+	private boolean bankShown()
+	{
+		Widget items = client.getWidget(InterfaceID.Bankmain.ITEMS);
+		return items != null && !items.isHidden();
+	}
+
+	// ---- building the bank ----
+
+	private void onScriptPreFiredBeforeBankTags(ScriptPreFired e)
+	{
+		if (e.getScriptId() != ScriptID.BANKMAIN_FINISHBUILDING || !config.addToLayouts())
+		{
+			return;
+		}
+		try
+		{
+			placeTaggedPotions();
+		}
+		catch (RuntimeException ex)
+		{
+			log.warn("adding stored potions to a tag layout failed", ex);
+		}
+	}
+
+	@Subscribe(priority = AFTER_BANK_TAGS)
+	public void onScriptPreFired(ScriptPreFired e)
+	{
+		if (e.getScriptId() != ScriptID.BANKMAIN_FINISHBUILDING)
+		{
+			return;
+		}
+		frame = new Frame(Frame.Mode.NONE);
+		try
+		{
+			frame = build();
+			learnPending |= frame.orderChanged;
+		}
+		catch (RuntimeException ex)
+		{
+			log.warn("drawing the potion store into the bank failed", ex);
+		}
+	}
+
+	private View currentView(int tab)
+	{
+		if (tab == BANKTAB_POTIONSTORE)
+		{
+			return View.NONE;
+		}
+		if (bankTags.tagGridShown())
+		{
+			return View.TAG_GRID;
+		}
+		if (bankTags.activeBankTag() != null)
+		{
+			return bankTags.activeLayout() != null ? View.TAG_LAYOUT : View.TAG_PLAIN;
+		}
+		Widget title = client.getWidget(InterfaceID.Bankmain.TITLE);
+		return title != null && title.getText() != null && title.getText().startsWith(SEARCH_TITLE) ? View.SEARCH : View.BANK;
+	}
+
+	private Frame build()
+	{
+		ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+		Widget items = client.getWidget(InterfaceID.Bankmain.ITEMS);
+		Frame built = new Frame(Frame.Mode.NONE);
+		if (bank == null || items == null)
+		{
+			return built;
+		}
+		int tab = client.getVarbitValue(VarbitID.BANK_CURRENTTAB);
+		View shown = currentView(tab);
+		if (shown == View.TAG_LAYOUT)
+		{
+			tidyLayout(items, bank);
+		}
+		List<Stack> stacks = store.stacks();
+		List<Stack> shownStacks = storeShownIn(shown, stacks);
+		if (shownStacks.isEmpty())
+		{
+			return built;
+		}
+		// A potion the bank also holds is shown on the bank's own stack (BankView.combine), not as a stack of its own.
+		Set<Integer> held = config.combineWithBank() ? view.itemsHeld(bank) : Collections.emptySet();
+		List<Stack> loose = shownStacks.stream().filter(s -> !held.contains(s.itemId)).collect(Collectors.toList());
+		switch (shown)
+		{
+			case TAG_PLAIN:
+				BankTag tag = bankTags.activeBankTag();
+				built = view.append(items, bank, loose.stream().filter(s -> s.ids.stream().anyMatch(tag::contains)).collect(Collectors.toList()));
+				break;
+			case SEARCH:
+				built = view.arrange(items, bank, 0, loose, searchFilter(client.getVarcStrValue(VarClientID.MESLAYERINPUT)));
+				break;
+			case BANK:
+				built = view.arrange(items, bank, tab, loose, null);
+				break;
+			default:
+				// A laid-out tag tab: the Bank Tags plugin draws stored potions there itself.
+				break;
+		}
+		if (config.combineWithBank())
+		{
+			view.combine(built, items, bank, shownStacks, config.combinedWithdraw() == CombinedWithdraw.POTION_STORAGE_FIRST);
+		}
+		return built;
+	}
+
+	/**
+	 * A laid-out tag tab as the Bank Tags plugin drew it, stored potions and all: take out the unfinished ones
+	 * unless they are wanted, and the Doses submenu where there is only one dose to pick.
+	 */
+	private void tidyLayout(Widget items, ItemContainer bank)
+	{
+		if (!config.showUnfinished())
+		{
+			view.blankLayoutCells(items, bank, store.idsOf(k -> k.unfinished));
+		}
+		view.dropDosesMenu(items, store.idsOf(k -> k.doses.isEmpty()));
+	}
+
+	/**
+	 * The stored potions a view shows - as stacks of their own, or combined into the bank's: none where its
+	 * setting is off, which leaves the bank's own stacks as the game draws them, and no unfinished ones unless
+	 * they are wanted (left out, they keep their places for when they are wanted again). A laid-out tag tab is
+	 * the Bank Tags plugin's, which shows every stored potion its layout holds whatever this plugin's settings.
+	 */
+	private List<Stack> storeShownIn(View shown, List<Stack> stacks)
+	{
+		boolean on;
+		switch (shown)
+		{
+			case TAG_LAYOUT:
+				on = true;
+				break;
+			case TAG_PLAIN:
+				on = config.inTagTabs();
+				break;
+			case SEARCH:
+				on = config.inSearch();
+				break;
+			case BANK:
+				on = config.inBank();
+				break;
+			default:
+				on = false;
+				break;
+		}
+		if (!on)
+		{
+			return Collections.emptyList();
+		}
+		return config.showUnfinished() ? stacks : stacks.stream().filter(s -> !s.kind.unfinished).collect(Collectors.toList());
+	}
+
+	/**
+	 * The game's bank search, for a stored stack: the name holds the text - or, after {@code tag:}, one of the
+	 * stack's bank tags starts with it, the way the Bank Tags plugin reads a tag search.
+	 */
+	private Predicate<Stack> searchFilter(String raw)
+	{
+		String q = raw == null ? "" : raw.toLowerCase();
+		if (q.startsWith(BankTagsPlugin.TAG_SEARCH))
+		{
+			String tag = Text.standardize(q.substring(BankTagsPlugin.TAG_SEARCH.length()));
+			return s -> !tag.isEmpty() && s.ids.stream().anyMatch(id -> bankTags.tags(id).stream().anyMatch(t -> t.startsWith(tag)));
+		}
+		return s -> q.isEmpty() || s.name.toLowerCase().contains(q);
+	}
+
+	/**
+	 * A laid-out tag tab draws what its layout holds, plus any bank item tagged since - so a potion tagged
+	 * while it sits in the store never gets a place in it. Give it one, where the Bank Tags plugin puts a newly
+	 * tagged bank item, before that plugin lays the tab out; from then on that plugin draws it from the store
+	 * itself.
+	 */
+	private void placeTaggedPotions()
+	{
+		BankTag tag = bankTags.activeBankTag();
+		Layout layout = bankTags.activeLayout();
+		if (tag == null || layout == null || !bankTags.layoutChangeable())
+		{
+			return;
+		}
+		Set<Integer> placed = Arrays.stream(layout.getLayout()).boxed().collect(Collectors.toSet());
+		// A potion the bank holds too is the bank's to place, and BankView.combine shows the store's count on it.
+		ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+		Set<Integer> inBank = config.combineWithBank() && bank != null ? view.itemsHeld(bank) : Collections.emptySet();
+		bankTags.addToOpenLayout(store.stacks().stream()
+			.filter(s -> !inBank.contains(s.itemId) && (config.showUnfinished() || !s.kind.unfinished))
+			.filter(s -> s.ids.stream().noneMatch(placed::contains) && s.ids.stream().anyMatch(tag::contains))
+			.map(s -> s.itemId)
+			.collect(Collectors.toList()));
+	}
+
+	// ---- the store ----
+
+	@Subscribe
+	public void onVarbitChanged(VarbitChanged e)
+	{
+		store.varpChanged(e.getVarpId());
+	}
+
+	/**
+	 * A withdrawal from the store changes no bank slot, so nothing else would redraw the bank for it. And the
+	 * store panel's draggable copies follow its icons as the list scrolls.
+	 */
+	@Subscribe
+	public void onClientTick(ClientTick e)
+	{
+		if (bankShown() && store.readIfDirty())
+		{
+			relayout();
+		}
+		panel.sync();
+	}
+
+	@Subscribe
+	public void onGameTick(GameTick e)
+	{
+		ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+		if (!bankShown() || bank == null)
+		{
+			return;
+		}
+		if (client.getTickCount() % STORE_REREAD_TICKS == 0)
+		{
+			store.markDirty();
+		}
+		if (store.expire())
+		{
+			relayout();
+		}
+		// Learn the order only from a bank that read the same a whole tick ago - never from one mid-update.
+		int sig = view.signature(bank);
+		boolean settled = sig == bankSignature;
+		bankSignature = sig;
+		if (settled && (learnPending || sig != learnedSignature))
+		{
+			learnPending = false;
+			learnedSignature = sig;
+			BankView.ServerBank server = view.readServer(bank);
+			savedOrder.learn(server.reals, store.stacks().stream().map(s -> s.key).collect(Collectors.toList()), server.existing);
+		}
+	}
+
+	@Subscribe
+	public void onWidgetClosed(WidgetClosed e)
+	{
+		if (e.getGroupId() == InterfaceID.BANKMAIN && e.isUnload())
+		{
+			resetSession();
+		}
+	}
+
+	// ---- clicks ----
+
+	@Subscribe(priority = EARLY)
+	public void onMenuOptionClicked(MenuOptionClicked e)
+	{
+		if (e.getParam1() == InterfaceID.Bankmain.POTIONSTORE_CONTAINER)
+		{
+			panel.click(e);
+		}
+		else if (e.getParam1() != InterfaceID.Bankmain.ITEMS)
+		{
+			return;
+		}
+		else if (e.getMenuAction() == MenuAction.RUNELITE && e.getMenuOption() != null
+			&& Text.removeTags(e.getMenuOption()).startsWith(REMOVE_TAG))
+		{
+			removeStoredFromTag(e.getItemId());
+		}
+		else if (isWidgetOp(e.getMenuAction()) && frame.withdrawsFromStore(e.getParam0()))
+		{
+			retargetToStore(e);
+		}
+	}
+
+	/**
+	 * A stored stack's withdraw is the store's own button. The stack is the one the menu was built for, by the
+	 * item it carries - not whatever is drawn on the slot now: stored stacks take spare slots in turn, and a
+	 * bank redrawn while the menu was open can have put another potion there. A click that cannot be pointed
+	 * at the store goes nowhere, unless it is a real bank stack's, which is the bank's own click again.
+	 */
+	private void retargetToStore(MenuOptionClicked e)
+	{
+		int child = e.getParam0();
+		boolean ownOptions = frame.keepsOwnOptions(child);
+		if (ownOptions && (e.getId() < 1 || e.getId() > LAST_WITHDRAW_OP))
+		{
+			// A combined bank stack's Placeholder and Examine, and the Bank Tags plugin's Doses, stay its own.
+			return;
+		}
+		MenuEntry m = e.getMenuEntry();
+		Widget widget = m.getWidget();
+		int itemId = e.getItemId() > 0 ? e.getItemId() : widget == null ? -1 : widget.getItemId();
+		Stack stack = store.stackOf(itemId);
+		if (stack == null || !store.prepareWidgets())
+		{
+			if (!ownOptions)
+			{
+				e.consume();
+			}
+			return;
+		}
+		m.setParam1(InterfaceID.Bankmain.POTIONSTORE_ITEMS);
+		if (e.getId() > 0xffff)
+		{
+			// The Doses submenu: the sub-option's dose, on the icon.
+			m.setParam0(PotionStore.iconChild(stack.kind.index));
+			m.setIdentifier((e.getId() >> 16) - 1);
+			return;
+		}
+		m.setParam0(PotionStore.rowChild(stack.kind.index));
+		if (config.instantCounts() && widget != null && widget.getItemId() == stack.itemId)
+		{
+			ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+			int alsoShown = ownOptions && bank != null ? bank.count(stack.itemId) : 0;
+			store.predictWithdraw(stack, Text.removeTags(e.getMenuOption() == null ? "" : e.getMenuOption()), widget, alsoShown);
+		}
+	}
+
+	/**
+	 * The Bank Tags plugin's Remove-tag, finished for a stored potion. A stored potion is drawn as the dose the
+	 * store pays out, so that plugin removes the tag - and the layout cells - of that dose alone; a cell or a
+	 * tag holding another dose of it keeps drawing it. A real bank stack is left to that plugin.
+	 */
+	private void removeStoredFromTag(int itemId)
+	{
+		ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+		PotionStore.Kind kind = store.kindOf(itemId);
+		if (kind != null && (bank == null || !bank.contains(itemId)) && bankTags.removeFromOpenTag(kind.doseIds))
+		{
+			relayout();
+		}
+	}
+
+	// ---- the potion store's panel ----
+
+	@Subscribe
+	public void onScriptPostFired(ScriptPostFired e)
+	{
+		if (e.getScriptId() == ScriptID.POTIONSTORE_BUILD || e.getScriptId() == ScriptID.POTIONSTORE_DOSE_CHANGE)
+		{
+			panel.refresh();
+		}
+	}
+
+	@Subscribe
+	public void onPostMenuSort(PostMenuSort e)
+	{
+		panel.dedupeMenu();
+	}
+
+	@Subscribe
+	public void onMenuEntryAdded(MenuEntryAdded e)
+	{
+		int param1 = e.getActionParam1();
+		if (param1 == InterfaceID.Bankmain.POTIONSTORE_ITEMS || param1 == InterfaceID.Bankmain.POTIONSTORE_CONTAINER)
+		{
+			panel.addEditTags(e);
+		}
+	}
+
+	// ---- drags ----
+
+	@Subscribe(priority = AFTER_BANK_TAGS)
+	public void onWidgetDrag(WidgetDrag e)
+	{
+		if (!drags.released(frame))
+		{
+			return;
+		}
+		Widget src = client.getDraggedWidget();
+		if (panel.isCopy(src))
+		{
+			panel.drop(src);
+		}
+		else if (src != null)
+		{
+			drags.drop(frame, src);
+		}
+	}
+}
