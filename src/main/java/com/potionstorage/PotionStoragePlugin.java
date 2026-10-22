@@ -250,8 +250,7 @@ public class PotionStoragePlugin extends Plugin
 		drags = new BankDrags(client, savedOrder, this::relayout);
 		panel = new StorePanel(client, config, pluginManager, bankTags, this::relayout);
 		storeButton = new StoreButton(client);
-		placeholderRelease = new PlaceholderRelease(client, clientThread, chatboxPanelManager, savedOrder,
-			config::placeholders, this::relayout);
+		placeholderRelease = new PlaceholderRelease(client, savedOrder, config::placeholders, this::relayout);
 		visibility = new PotionVisibility(key -> configManager.getConfiguration(PotionStorageConfig.GROUP, key), this::saveVisibility);
 		sidebar = new VisibilityPanel(itemManager::getImage, visibility, () -> clientThread.invokeLater(this::sendPotions),
 			doses -> configManager.setConfiguration(PotionStorageConfig.GROUP, "sidebarCount", doses ? SidebarCount.DOSES : SidebarCount.POTIONS));
@@ -743,7 +742,8 @@ public class PotionStoragePlugin extends Plugin
 	@Subscribe
 	public void onClientTick(ClientTick e)
 	{
-		if (bankShown())
+		// The bank's menu hides its items, so not bankShown(): any time the bank is open.
+		if (client.getWidget(InterfaceID.Bankmain.RELEASE_PLACEHOLDERS) != null)
 		{
 			placeholderRelease.syncButton();
 		}

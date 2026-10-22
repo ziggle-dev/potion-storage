@@ -29,44 +29,48 @@ import net.runelite.api.Client;
 import net.runelite.api.Item;
 import net.runelite.api.ItemComposition;
 import net.runelite.api.ItemContainer;
+import net.runelite.api.ScriptEvent;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetType;
-import net.runelite.client.callback.ClientThread;
-import net.runelite.client.game.chatbox.ChatboxPanelManager;
 import net.runelite.client.util.Text;
 
 /**
  * The bank menu's "Release all placeholders", made to count and release this plugin's placeholders with the
- * bank's own: its count includes them, and confirming in the game's "Release all placeholders?" pop-up releases
- * them too, places and all. The game offers no pop-up for a bank without placeholders of its own, so with only
- * this plugin's to release, the chatbox asks instead. Client thread only.
+ * bank's own. While there are any of ours, the button is drawn as the game draws it with placeholders to
+ * release - its red frame, its orange text, the count in its text and its option - and, with none of the bank's
+ * own, given the game's own click for it, which opens the game's "Release all placeholders?" pop-up. Confirming
+ * there releases ours too, places and all. The look and the click are learned from the game whenever it shows
+ * them, and are the ones seen in it otherwise. With none of ours left, the game redraws the button itself.
+ * Client thread only.
  */
 final class PlaceholderRelease
 {
 	private static final String BUTTON_TEXT = "Release all placeholders";
 	private static final String POPUP_TITLE = "Release all placeholders?";
 	private static final String CONFIRM = "Release them all";
+	/** The button's frame: its first nine parts, corners and edges. */
+	private static final int FRAME_PARTS = 9;
 
 	private final Client client;
-	private final ClientThread clientThread;
-	private final ChatboxPanelManager chatboxPanelManager;
 	private final SavedOrder savedOrder;
 	private final BooleanSupplier enabled;
 	private final Runnable relayout;
 
 	/** The bank's own placeholders, as last counted. */
 	private int bankPlaceholders;
-	/** The button's count is one this set, not the game's. */
+	/** The button is as this drew it, not as the game did. */
 	private boolean counted;
 
-	PlaceholderRelease(Client client, ClientThread clientThread, ChatboxPanelManager chatboxPanelManager,
-		SavedOrder savedOrder, BooleanSupplier enabled, Runnable relayout)
+	// The button as the game draws it with placeholders to release.
+	private int[] enabledFrame = {1150, 1151, 1152, 1153, 1154, 1155, 1156, 1157, 1158};
+	private int enabledColor = 0xff981f;
+	private Object[] enabledClick = {1273, ScriptEvent.MENU_OP, InterfaceID.Bankmain.RELEASE_PLACEHOLDERS, InterfaceID.Bankmain.LOCKS};
+
+	PlaceholderRelease(Client client, SavedOrder savedOrder, BooleanSupplier enabled, Runnable relayout)
 	{
 		this.client = client;
-		this.clientThread = clientThread;
-		this.chatboxPanelManager = chatboxPanelManager;
 		this.savedOrder = savedOrder;
 		this.enabled = enabled;
 		this.relayout = relayout;
@@ -94,30 +98,94 @@ final class PlaceholderRelease
 		return enabled.getAsBoolean() ? savedOrder.placeholders().size() : 0;
 	}
 
-	/** The button's count, with this plugin's placeholders in it. Each frame the bank is open: cheap. */
+	/** The button, with ours in it. Each frame the bank is open: it does nothing until the game redraws it. */
 	void syncButton()
-	{
-		int ours = ours();
-		Widget text = buttonText();
-		if (text == null || (ours == 0 && !counted))
-		{
-			return;
-		}
-		// None of ours left: the game's own text again, which it does not redraw for a release of ours alone.
-		int total = bankPlaceholders + ours;
-		String want = total > 0 ? BUTTON_TEXT + " (" + total + ")" : BUTTON_TEXT;
-		counted = ours > 0;
-		if (!want.equals(text.getText()))
-		{
-			text.setText(want);
-		}
-	}
-
-	/** The button's own text, the one text component among its parts. */
-	private Widget buttonText()
 	{
 		Widget button = client.getWidget(InterfaceID.Bankmain.RELEASE_PLACEHOLDERS);
 		Widget[] parts = button == null ? null : button.getDynamicChildren();
+		Widget text = textOf(parts);
+		if (text == null)
+		{
+			return;
+		}
+		int ours = ours();
+		if (ours == 0)
+		{
+			if (counted)
+			{
+				counted = false;
+				redrawByGame(button);
+			}
+			return;
+		}
+		String label = BUTTON_TEXT + " (" + (bankPlaceholders + ours) + ")";
+		if (counted && label.equals(text.getText()))
+		{
+			return;
+		}
+		if (bankPlaceholders > 0)
+		{
+			// The game's own drawing, with placeholders to release: the look to copy.
+			learn(button, parts, text);
+		}
+		text.setText(label);
+		text.setTextColor(enabledColor);
+		for (int i = 0; i < FRAME_PARTS && i < parts.length; i++)
+		{
+			if (parts[i] != null)
+			{
+				parts[i].setSpriteId(enabledFrame[i]);
+			}
+		}
+		button.setAction(0, label);
+		if (bankPlaceholders == 0)
+		{
+			button.setOnOpListener(enabledClick);
+		}
+		counted = true;
+	}
+
+	private void learn(Widget button, Widget[] parts, Widget text)
+	{
+		if (parts.length >= FRAME_PARTS)
+		{
+			int[] frame = new int[FRAME_PARTS];
+			for (int i = 0; i < FRAME_PARTS; i++)
+			{
+				frame[i] = parts[i] == null ? enabledFrame[i] : parts[i].getSpriteId();
+			}
+			enabledFrame = frame;
+		}
+		enabledColor = text.getTextColor();
+		Object[] click = button.getOnOpListener();
+		if (click != null && click.length > 0)
+		{
+			enabledClick = click.clone();
+		}
+	}
+
+	/** Have the game draw the button again, as it does when the bank changes. */
+	private void redrawByGame(Widget button)
+	{
+		Object[] redraw = button.getOnInvTransmitListener();
+		if (redraw == null || redraw.length == 0)
+		{
+			return;
+		}
+		for (Object arg : redraw)
+		{
+			// An argument the game fills in from an event there is none of here.
+			if (arg instanceof Integer && (Integer) arg <= Integer.MIN_VALUE + 16)
+			{
+				return;
+			}
+		}
+		client.runScript(redraw);
+	}
+
+	/** The button's own text, the one text component among its parts. */
+	private static Widget textOf(Widget[] parts)
+	{
 		if (parts != null)
 		{
 			for (Widget w : parts)
@@ -131,28 +199,18 @@ final class PlaceholderRelease
 		return null;
 	}
 
+	/** "Release them all" in the game's pop-up: ours go too. */
 	void clicked(MenuOptionClicked e)
 	{
-		if (e.getParam1() == InterfaceID.Bankmain.RELEASE_PLACEHOLDERS && bankPlaceholders == 0 && ours() > 0)
-		{
-			// Nothing of the bank's to release: the game would say so and stop. Ask here instead.
-			e.consume();
-			int n = ours();
-			chatboxPanelManager.openTextMenuInput("Release all " + n + " placeholder" + (n == 1 ? "" : "s") + "?")
-				.option(CONFIRM, () -> clientThread.invoke(this::releaseAll))
-				.option("Cancel", () ->
-				{
-				})
-				.build();
-		}
-		else if (e.getParam1() == InterfaceID.Popupoverlay.BUTTON_1 && e.getMenuOption() != null
+		if (e.getParam1() == InterfaceID.Popupoverlay.BUTTON_1 && e.getMenuOption() != null
 			&& CONFIRM.equals(Text.removeTags(e.getMenuOption())) && popupIsRelease())
 		{
-			releaseAll();
+			savedOrder.release(savedOrder.placeholders());
+			relayout.run();
 		}
 	}
 
-	/** The game's pop-up is a general one: it is ours only under this title. */
+	/** The game's pop-up is a general one: it is this one only under this title. */
 	private boolean popupIsRelease()
 	{
 		Widget frame = client.getWidget(InterfaceID.Popupoverlay.FRAME);
@@ -168,11 +226,5 @@ final class PlaceholderRelease
 			}
 		}
 		return false;
-	}
-
-	private void releaseAll()
-	{
-		savedOrder.release(savedOrder.placeholders());
-		relayout.run();
 	}
 }
