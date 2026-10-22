@@ -72,7 +72,7 @@ final class ReleasePopup
 		}
 		close();
 		// Positions are the game's, within the same layer: its window at (6, 35), the box at (21, 338).
-		Widget shade = rect(layer, 6, 35, 476, 751, 0x000000, 150);
+		Widget shade = rect(layer, 6, 35, 476, 751, 0x000000, 150, true);
 		shade.setNoClickThrough(true);
 
 		sprite(layer, 297, true, 22, 339, 444, 143);
@@ -87,9 +87,12 @@ final class ReleasePopup
 		sprite(layer, 173, true, 46, 462, 396, 36);
 		sprite(layer, 2546, true, 26, 352, 436, 26);
 
-		rect(layer, 31, 378, 426, 95, 0x4d4d4d, 0);
-		rect(layer, 32, 379, 424, 93, 0x171717, 0);
-		text(layer, MESSAGE, BODY_FONT, 34, 380, 403, 46);
+		// The list's border: two outlines over the box's own background.
+		rect(layer, 31, 378, 426, 95, 0x4d4d4d, 0, false);
+		rect(layer, 32, 379, 424, 93, 0x171717, 0, false);
+		Widget message = text(layer, MESSAGE, BODY_FONT, 34, 380, 403, 46);
+		message.setXTextAlignment(WidgetTextAlignment.LEFT);
+		message.setYTextAlignment(WidgetTextAlignment.TOP);
 		cancel = button(layer, 93, 436, "<col=ff0000>Cancel</col>", "Cancel");
 		confirm = button(layer, 267, 436, "<col=0dc10d>Release them all</col>", "Release them all");
 
@@ -156,10 +159,10 @@ final class ReleasePopup
 		return place(c, x, y, w, h);
 	}
 
-	private static Widget rect(Widget layer, int x, int y, int w, int h, int color, int opacity)
+	private static Widget rect(Widget layer, int x, int y, int w, int h, int color, int opacity, boolean filled)
 	{
 		Widget c = layer.createChild(-1, WidgetType.RECTANGLE);
-		c.setFilled(true);
+		c.setFilled(filled);
 		c.setTextColor(color);
 		c.setOpacity(opacity);
 		return place(c, x, y, w, h);
