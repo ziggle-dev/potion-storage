@@ -261,7 +261,16 @@ public class PotionStoragePlugin extends Plugin
 		bankTags.refresh();
 		beforeBankTags = eventBus.register(ScriptPreFired.class, this::onScriptPreFiredBeforeBankTags, BEFORE_BANK_TAGS);
 		relayout();
-		clientThread.invokeLater(panel::refresh);
+		clientThread.invokeLater(() ->
+		{
+			panel.refresh();
+			// Started with the bank open: count it now, so the first deposit is compared with something.
+			ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+			if (bankShown() && bank != null)
+			{
+				bankPotions = potionCounts(bank);
+			}
+		});
 	}
 
 	@Override
