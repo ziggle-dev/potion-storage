@@ -26,9 +26,11 @@ package com.potionstorage;
 
 import com.google.inject.Provides;
 import com.potionstorage.PotionStore.Stack;
+import com.potionstorage.PotionVisibility.Where;
 import static com.potionstorage.BankWidgets.BANKTAB_POTIONSTORE;
 import static com.potionstorage.BankWidgets.LAST_WITHDRAW_OP;
 import static com.potionstorage.BankWidgets.isWidgetOp;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -36,13 +38,16 @@ import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.GameState;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.ScriptID;
 import net.runelite.api.events.ClientTick;
+import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.MenuOptionClicked;
@@ -72,6 +77,9 @@ import net.runelite.client.plugins.bank.BankSearch;
 import net.runelite.client.plugins.banktags.BankTag;
 import net.runelite.client.plugins.banktags.BankTagsPlugin;
 import net.runelite.client.plugins.banktags.tabs.Layout;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.Text;
 
 /**
@@ -95,7 +103,9 @@ import net.runelite.client.util.Text;
  * </ul>
  * With "Combine with bank stacks" on, a potion the bank holds too is not drawn twice: the bank's stack shows
  * both counts, and withdraws from whichever the setting says first. Potion storage's own panel gets
- * Edit-tags, and draggable copies of its icons to drop on a tag tab ({@link StorePanel}).
+ * Edit-tags, and draggable copies of its icons to drop on a tag tab ({@link StorePanel}). Potion by potion,
+ * any of them can be left out of the bank, tag tabs or searches, from a panel in the sidebar
+ * ({@link VisibilityPanel}, {@link PotionVisibility}).
  * <p>
  * What is drawn is resolved on a copy; what is saved waits for a settled bank. The server's new item order
  * and its new tab sizes do not always reach a build together, and a build that sees one without the other
@@ -120,6 +130,12 @@ public class PotionStoragePlugin extends Plugin
 	private static final int AFTER_BANK_TAGS = -10;
 	/** A rewritten click should be what any plugin later in line sees. */
 	private static final int EARLY = 1;
+
+	/** A potion's dose at the end of its name: "Saradomin brew(4)". */
+	private static final String DOSE_SUFFIX = "\\s*\\(\\d\\)$";
+
+	/** Where the sidebar button goes among the others. */
+	private static final int SIDEBAR_PRIORITY = 8;
 
 	/** A full re-read of the store this often, whatever varp the store's own list does not name. */
 	private static final int STORE_REREAD_TICKS = 50;
@@ -151,12 +167,18 @@ public class PotionStoragePlugin extends Plugin
 	@Inject
 	private ChatboxPanelManager chatboxPanelManager;
 
+	@Inject
+	private ClientToolbar clientToolbar;
+
 	private PotionStore store;
 	private SavedOrder savedOrder;
 	private BankTagsBridge bankTags;
 	private BankView view;
 	private BankDrags drags;
 	private StorePanel panel;
+	private PotionVisibility visibility;
+	private VisibilityPanel sidebar;
+	private NavigationButton sidebarButton;
 
 	/** What the last build drew. Client thread only. */
 	private Frame frame = new Frame(Frame.Mode.NONE);
@@ -200,6 +222,18 @@ public class PotionStoragePlugin extends Plugin
 		view = new BankView(client, config, savedOrder);
 		drags = new BankDrags(client, savedOrder, this::relayout);
 		panel = new StorePanel(client, config, pluginManager, bankTags, this::relayout);
+		visibility = new PotionVisibility(key -> configManager.getConfiguration(PotionStorageConfig.GROUP, key), this::saveVisibility);
+		sidebar = new VisibilityPanel(itemManager::getImage, visibility, () -> clientThread.invokeLater(this::sendPotions));
+		sidebarButton = NavigationButton.builder()
+			.tooltip("Potion Storage")
+			.icon(ImageUtil.loadImageResource(getClass(), "panel_icon.png"))
+			.priority(SIDEBAR_PRIORITY)
+			.panel(sidebar)
+			.build();
+		if (config.showSidebar())
+		{
+			clientToolbar.addNavigation(sidebarButton);
+		}
 		bankTags.refresh();
 		beforeBankTags = eventBus.register(ScriptPreFired.class, this::onScriptPreFiredBeforeBankTags, BEFORE_BANK_TAGS);
 		relayout();
@@ -209,6 +243,7 @@ public class PotionStoragePlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		clientToolbar.removeNavigation(sidebarButton);
 		eventBus.unregister(beforeBankTags);
 		clientThread.invokeLater(() ->
 		{
@@ -236,8 +271,30 @@ public class PotionStoragePlugin extends Plugin
 	{
 		if (PotionStorageConfig.GROUP.equals(e.getGroup()) && !SavedOrder.isOwnKey(e.getKey()))
 		{
+			visibility.reload();
+			if ("showSidebar".equals(e.getKey()))
+			{
+				if (config.showSidebar())
+				{
+					clientToolbar.addNavigation(sidebarButton);
+				}
+				else
+				{
+					clientToolbar.removeNavigation(sidebarButton);
+				}
+			}
+			SwingUtilities.invokeLater(sidebar::settingsChanged);
 			relayout();
-			clientThread.invokeLater(panel::refresh);
+			// The panel's own clicks need no new potions sent: it has drawn them already.
+			boolean switchChanged = !PotionVisibility.isOwnKey(e.getKey());
+			clientThread.invokeLater(() ->
+			{
+				panel.refresh();
+				if (switchChanged && sidebarShown())
+				{
+					sendPotions();
+				}
+			});
 		}
 	}
 
@@ -378,22 +435,26 @@ public class PotionStoragePlugin extends Plugin
 
 	/**
 	 * A laid-out tag tab as the Bank Tags plugin drew it, stored potions and all: take out the unfinished ones
-	 * unless they are wanted, and the Doses submenu where there is only one dose to pick.
+	 * unless they are wanted and the ones the sidebar panel hides in tag tabs, and the Doses submenu where
+	 * there is only one dose to pick.
 	 */
 	private void tidyLayout(Widget items, ItemContainer bank)
 	{
-		if (!config.showUnfinished())
+		boolean unfinished = config.showUnfinished();
+		Set<Integer> hidden = store.idsOf(k -> (k.unfinished && !unfinished) || !visibility.shown(Where.TAGS, k.id()));
+		if (!hidden.isEmpty())
 		{
-			view.blankLayoutCells(items, bank, store.idsOf(k -> k.unfinished));
+			view.blankLayoutCells(items, bank, hidden);
 		}
 		view.dropDosesMenu(items, store.idsOf(k -> k.doses.isEmpty()));
 	}
 
 	/**
 	 * The stored potions a view shows - as stacks of their own, or combined into the bank's: none where its
-	 * setting is off, which leaves the bank's own stacks as the game draws them, and no unfinished ones unless
-	 * they are wanted (left out, they keep their places for when they are wanted again). A laid-out tag tab is
-	 * the Bank Tags plugin's, which shows every stored potion its layout holds whatever this plugin's settings.
+	 * setting is off, which leaves the bank's own stacks as the game draws them, no unfinished ones unless they
+	 * are wanted, and none the sidebar panel hides there (left out, they keep their places for when they are
+	 * wanted again). A laid-out tag tab shows stored potions whatever "Show in tag tabs" says: they are the
+	 * Bank Tags plugin's, drawn by its layout, and {@link #tidyLayout} takes out the ones not wanted.
 	 */
 	private List<Stack> storeShownIn(View shown, List<Stack> stacks)
 	{
@@ -420,7 +481,10 @@ public class PotionStoragePlugin extends Plugin
 		{
 			return Collections.emptyList();
 		}
-		return config.showUnfinished() ? stacks : stacks.stream().filter(s -> !s.kind.unfinished).collect(Collectors.toList());
+		Where where = shown == View.BANK ? Where.BANK : shown == View.SEARCH ? Where.SEARCH : Where.TAGS;
+		return stacks.stream()
+			.filter(s -> (config.showUnfinished() || !s.kind.unfinished) && visibility.shown(where, s.kind.id()))
+			.collect(Collectors.toList());
 	}
 
 	/**
@@ -457,7 +521,8 @@ public class PotionStoragePlugin extends Plugin
 		ItemContainer bank = client.getItemContainer(InventoryID.BANK);
 		Set<Integer> inBank = config.combineWithBank() && bank != null ? view.itemsHeld(bank) : Collections.emptySet();
 		bankTags.addToOpenLayout(store.stacks().stream()
-			.filter(s -> !inBank.contains(s.itemId) && (config.showUnfinished() || !s.kind.unfinished))
+			.filter(s -> !inBank.contains(s.itemId) && (config.showUnfinished() || !s.kind.unfinished)
+				&& visibility.shown(Where.TAGS, s.kind.id()))
 			.filter(s -> s.ids.stream().noneMatch(placed::contains) && s.ids.stream().anyMatch(tag::contains))
 			.map(s -> s.itemId)
 			.collect(Collectors.toList()));
@@ -481,6 +546,10 @@ public class PotionStoragePlugin extends Plugin
 		if (bankShown() && store.readIfDirty())
 		{
 			relayout();
+			if (sidebarShown())
+			{
+				sendPotions();
+			}
 		}
 		panel.sync();
 	}
@@ -488,6 +557,11 @@ public class PotionStoragePlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick e)
 	{
+		// Away from the bank the store is read only for the sidebar panel's dose counts.
+		if (!bankShown() && sidebarShown() && store.readIfDirty())
+		{
+			sendPotions();
+		}
 		ItemContainer bank = client.getItemContainer(InventoryID.BANK);
 		if (!bankShown() || bank == null)
 		{
@@ -511,6 +585,15 @@ public class PotionStoragePlugin extends Plugin
 			learnedSignature = sig;
 			BankView.ServerBank server = view.readServer(bank);
 			savedOrder.learn(server.reals, store.stacks().stream().map(s -> s.key).collect(Collectors.toList()), server.existing);
+		}
+	}
+
+	@Subscribe
+	public void onGameStateChanged(GameStateChanged e)
+	{
+		if (sidebarShown() && (e.getGameState() == GameState.LOGGED_IN || e.getGameState() == GameState.LOGIN_SCREEN))
+		{
+			clientThread.invokeLater(this::sendPotions);
 		}
 	}
 
@@ -631,6 +714,50 @@ public class PotionStoragePlugin extends Plugin
 		{
 			panel.addEditTags(e);
 		}
+	}
+
+	// ---- the sidebar panel ----
+
+	private boolean sidebarShown()
+	{
+		return sidebar != null && sidebar.isShowing();
+	}
+
+	/** A visibility list, saved; an empty one is no setting at all. */
+	private void saveVisibility(String key, String value)
+	{
+		if (value.isEmpty())
+		{
+			configManager.unsetConfiguration(PotionStorageConfig.GROUP, key);
+		}
+		else
+		{
+			configManager.setConfiguration(PotionStorageConfig.GROUP, key, value);
+		}
+	}
+
+	/** Every potion the store keeps, with its doses as last read, to the sidebar panel. Client thread. */
+	private void sendPotions()
+	{
+		List<VisibilityPanel.Potion> potions = new ArrayList<>();
+		if (client.getGameState() == GameState.LOGGED_IN)
+		{
+			if (store.readIfDirty() && bankShown())
+			{
+				relayout();
+			}
+			for (PotionStore.Kind k : store.kinds())
+			{
+				if (k.id() > 0)
+				{
+					String name = client.getItemDefinition(k.iconId()).getName().replaceAll(DOSE_SUFFIX, "");
+					potions.add(new VisibilityPanel.Potion(k.id(), k.iconId(), name, store.doses(k), k.unfinished));
+				}
+			}
+		}
+		VisibilityPanel.Switches switches = new VisibilityPanel.Switches(config.inBank(), config.inTagTabs(),
+			config.inSearch(), config.showUnfinished());
+		SwingUtilities.invokeLater(() -> sidebar.update(potions, switches));
 	}
 
 	// ---- drags ----

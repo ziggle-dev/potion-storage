@@ -161,4 +161,35 @@ public interface PotionStorageConfig extends Config
 	{
 		return true;
 	}
+
+	@ConfigItem(
+		keyName = "showSidebar",
+		name = "Sidebar panel",
+		description = "Add a Potion Storage button to the sidebar, which opens a panel of every potion for choosing where each is shown",
+		position = 4
+	)
+	default boolean showSidebar()
+	{
+		return true;
+	}
+
+	// The sidebar panel's choices: the potions hidden in each place (PotionVisibility), as lists of item ids.
+
+	@ConfigItem(keyName = "hiddenInBank", name = "", description = "", hidden = true)
+	default String hiddenInBank()
+	{
+		return "";
+	}
+
+	@ConfigItem(keyName = "hiddenInTags", name = "", description = "", hidden = true)
+	default String hiddenInTags()
+	{
+		return "";
+	}
+
+	@ConfigItem(keyName = "hiddenInSearch", name = "", description = "", hidden = true)
+	default String hiddenInSearch()
+	{
+		return "";
+	}
 }

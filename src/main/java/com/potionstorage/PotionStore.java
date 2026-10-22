@@ -111,6 +111,18 @@ final class PotionStore
 			this.doseIds = Collections.unmodifiableList(ids);
 			this.doses = numbers.size() > 1 && !unfinished ? Collections.unmodifiableList(numbers) : Collections.emptyList();
 		}
+
+		/** What the visibility settings know it by: its smallest dose's item id, which no other kind shares. */
+		int id()
+		{
+			return doseIds.isEmpty() ? -1 : doseIds.get(0);
+		}
+
+		/** The dose it is pictured as: its largest, the potion as it is made. */
+		int iconId()
+		{
+			return doseIds.isEmpty() ? -1 : doseIds.get(doseIds.size() - 1);
+		}
 	}
 
 	/** One stack the store can pay out, as the plugin draws it. */
@@ -305,6 +317,25 @@ final class PotionStore
 			}
 		}
 		return out;
+	}
+
+	/**
+	 * Every potion kind the store knows, held or not, in its own order, read from the game's cache if it has not
+	 * been yet. Client thread.
+	 */
+	List<Kind> kinds()
+	{
+		if (kinds == null || kinds.isEmpty())
+		{
+			kinds = readKinds();
+		}
+		return Collections.unmodifiableList(kinds);
+	}
+
+	/** The doses of {@code kind} the store holds, by its last read: 0 before one. */
+	int doses(Kind kind)
+	{
+		return kind.index < doses.length ? doses[kind.index] : 0;
 	}
 
 	/** Every dose of every potion kind {@code which} picks. Empty until the store has been read. */
