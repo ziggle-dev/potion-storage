@@ -36,7 +36,6 @@ import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -322,11 +321,10 @@ final class VisibilityPanel extends PluginPanel
 	private void rebuild()
 	{
 		String q = filter.getText() == null ? "" : filter.getText().trim().toLowerCase();
-		// Potions there are some of first, each part in potion storage's own order.
-		Comparator<Potion> storedFirst = Comparator.comparing(p -> p.doses == 0);
-		List<Potion> shown = potions.stream()
+		// Only the potions there are some of, in potion storage's own order.
+		List<Potion> stored = potions.stream().filter(p -> p.doses > 0).collect(Collectors.toList());
+		List<Potion> shown = stored.stream()
 			.filter(p -> q.isEmpty() || p.name.toLowerCase().contains(q))
-			.sorted(storedFirst)
 			.collect(Collectors.toList());
 
 		tiles.clear();
@@ -339,6 +337,10 @@ final class VisibilityPanel extends PluginPanel
 		if (potions.isEmpty())
 		{
 			empty.setText(html("Log in to see your potions."));
+		}
+		else if (stored.isEmpty())
+		{
+			empty.setText(html("Potion storage is empty."));
 		}
 		else if (shown.isEmpty())
 		{
@@ -390,8 +392,7 @@ final class VisibilityPanel extends PluginPanel
 
 		void fill(List<Potion> list, String warning)
 		{
-			long stored = list.stream().filter(p -> p.doses > 0).count();
-			heading.setText(name + "  " + stored + " stored");
+			heading.setText(name + "  (" + list.size() + ")");
 			note.setText(warning == null ? "" : html(warning));
 			note.setVisible(warning != null);
 			grid.removeAll();

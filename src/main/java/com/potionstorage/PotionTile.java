@@ -50,7 +50,6 @@ import javax.swing.SwingUtilities;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.util.AsyncBufferedImage;
-import net.runelite.client.util.ImageUtil;
 
 /**
  * One potion in the sidebar panel: its icon, the doses stored, and a strip of three switches under it - the
@@ -91,8 +90,6 @@ final class PotionTile extends JComponent
 	final VisibilityPanel.Potion potion;
 	private final Owner owner;
 	private final BufferedImage icon;
-	/** The icon in grey, made when first wanted; the image loading may clear it from the client thread. */
-	private volatile BufferedImage greyIcon;
 	private boolean hover;
 	/** The switch under the mouse, or -1. */
 	private int hoverSwitch = -1;
@@ -102,11 +99,7 @@ final class PotionTile extends JComponent
 		this.potion = potion;
 		this.owner = owner;
 		this.icon = icon;
-		icon.onLoaded(() ->
-		{
-			greyIcon = null;
-			repaint();
-		});
+		icon.onLoaded(this::repaint);
 		setPreferredSize(new Dimension(WIDTH, HEIGHT));
 		setToolTipText("");
 		MouseAdapter mouse = new MouseAdapter()
@@ -224,7 +217,7 @@ final class PotionTile extends JComponent
 				+ (shown.contains(w) ? "hide" : "show");
 		}
 		StringBuilder b = new StringBuilder("<html><b>").append(potion.name).append("</b><br>");
-		b.append(potion.doses > 0 ? potion.doses + (potion.doses == 1 ? " dose" : " doses") + " stored" : "None stored");
+		b.append(potion.doses).append(potion.doses == 1 ? " dose" : " doses").append(" stored");
 		List<Where> all = Arrays.asList(Where.values());
 		List<Where> in = all.stream().filter(shown::contains).collect(Collectors.toList());
 		List<Where> out = all.stream().filter(w -> !shown.contains(w)).collect(Collectors.toList());
@@ -263,10 +256,7 @@ final class PotionTile extends JComponent
 			g.fillRoundRect(0, 0, getWidth(), getHeight(), ARC, ARC);
 
 			paintIcon(g, shownOfEditing == editing.size() ? 1f : shownOfEditing == 0 ? HIDDEN_ALPHA : PARTLY_ALPHA);
-			if (potion.doses > 0)
-			{
-				paintCount(g);
-			}
+			paintCount(g);
 			paintSwitches(g, shown, editing);
 		}
 		finally
@@ -278,17 +268,6 @@ final class PotionTile extends JComponent
 	private void paintIcon(Graphics2D g, float alpha)
 	{
 		BufferedImage img = icon;
-		if (potion.doses == 0)
-		{
-			// Never stored, or none left: the grey of an empty slot, to tell it from one that is hidden.
-			img = greyIcon;
-			if (img == null)
-			{
-				img = ImageUtil.grayscaleImage(icon);
-				greyIcon = img;
-			}
-			alpha *= 0.7f;
-		}
 		Composite was = g.getComposite();
 		g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
 		g.drawImage(img, (getWidth() - img.getWidth()) / 2, (ICON_H - img.getHeight()) / 2 + 2, null);
