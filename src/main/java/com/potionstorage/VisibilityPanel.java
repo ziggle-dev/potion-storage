@@ -42,8 +42,10 @@ import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
@@ -75,10 +77,28 @@ final class VisibilityPanel extends PluginPanel
 	private static final Color BANK_FILL = new Color(62, 53, 41);
 	private static final Color BANK_EDGE = new Color(43, 36, 25);
 	private static final Color BANK_LINE = new Color(90, 77, 58);
+	private static final Color BANK_TEXT = new Color(184, 166, 138);
 	private static final Color TAB_ON = new Color(58, 58, 58);
 	private static final Color TAB_HOVER = new Color(51, 51, 51);
 	private static final Color SUBTLE = new Color(138, 138, 138);
 	private static final Color FAINT = new Color(111, 111, 111);
+
+	/** The panel's sections of potions, in order. */
+	enum Group
+	{
+		POTIONS(null),
+		/** Kept for a quest - Magic essence for Fairytale II, say - and little else. */
+		QUEST("Quest potions"),
+		UNFINISHED("Unfinished potions");
+
+		/** The divider above it; the first section has none. */
+		final String heading;
+
+		Group(String heading)
+		{
+			this.heading = heading;
+		}
+	}
 
 	/** One potion kind, as the panel draws it. */
 	@EqualsAndHashCode
@@ -90,16 +110,16 @@ final class VisibilityPanel extends PluginPanel
 		final int doses;
 		/** The doses in one whole potion. */
 		final int fullDose;
-		final boolean unfinished;
+		final Group group;
 
-		Potion(int id, int iconId, String name, int doses, int fullDose, boolean unfinished)
+		Potion(int id, int iconId, String name, int doses, int fullDose, Group group)
 		{
 			this.id = id;
 			this.iconId = iconId;
 			this.name = name;
 			this.doses = doses;
 			this.fullDose = Math.max(fullDose, 1);
-			this.unfinished = unfinished;
+			this.group = group;
 		}
 
 		int fullPotions()
@@ -165,9 +185,8 @@ final class VisibilityPanel extends PluginPanel
 	private final JLabel hint = new JLabel();
 	private final JLabel notice = new JLabel();
 	private final BankArea bank = new BankArea();
-	private final JPanel finishedGrid = grid();
-	private final JComponent divider = new Divider();
-	private final JPanel unfinishedGrid = grid();
+	private final Map<Group, JPanel> grids = new EnumMap<>(Group.class);
+	private final Map<Group, JComponent> dividers = new EnumMap<>(Group.class);
 	private final JLabel unfinishedNote = new JLabel();
 	private final JLabel empty = new JLabel();
 	private final JLabel summary = new JLabel();
@@ -242,14 +261,25 @@ final class VisibilityPanel extends PluginPanel
 		add(notice);
 
 		bank.setLayout(new Column(0));
-		bank.add(finishedGrid);
-		bank.add(divider);
 		unfinishedNote.setFont(FontManager.getRunescapeSmallFont());
 		unfinishedNote.setForeground(ColorScheme.PROGRESS_INPROGRESS_COLOR);
 		unfinishedNote.setBorder(new EmptyBorder(0, 2, 4, 2));
-		unfinishedNote.setAlignmentX(LEFT_ALIGNMENT);
-		bank.add(unfinishedNote);
-		bank.add(unfinishedGrid);
+		for (Group g : Group.values())
+		{
+			if (g.heading != null)
+			{
+				JComponent d = new Divider(g.heading);
+				dividers.put(g, d);
+				bank.add(d);
+			}
+			if (g == Group.UNFINISHED)
+			{
+				bank.add(unfinishedNote);
+			}
+			JPanel grid = grid();
+			grids.put(g, grid);
+			bank.add(grid);
+		}
 		add(bank);
 
 		empty.setFont(FontManager.getRunescapeSmallFont());
@@ -319,13 +349,12 @@ final class VisibilityPanel extends PluginPanel
 	private void rebuild()
 	{
 		slots.clear();
-		finishedGrid.removeAll();
-		unfinishedGrid.removeAll();
+		grids.values().forEach(JPanel::removeAll);
 		for (Potion p : stored())
 		{
 			PotionSlot slot = new PotionSlot(p, icons.apply(p.iconId), slotOwner);
 			slots.add(slot);
-			(p.unfinished ? unfinishedGrid : finishedGrid).add(slot);
+			grids.get(p.group).add(slot);
 		}
 	}
 
@@ -334,8 +363,7 @@ final class VisibilityPanel extends PluginPanel
 	{
 		List<Potion> stored = stored();
 		boolean any = !stored.isEmpty();
-		boolean anyFinished = stored.stream().anyMatch(p -> !p.unfinished);
-		boolean anyUnfinished = stored.stream().anyMatch(p -> p.unfinished);
+		Set<Group> filled = stored.stream().map(p -> p.group).collect(Collectors.toCollection(() -> EnumSet.noneOf(Group.class)));
 
 		depositWarning.setVisible(!switches.depositsToStore);
 		hint.setText(html("Click a potion to hide it in " + tab.phrase + ". Click it again to bring it back. "
@@ -344,11 +372,20 @@ final class VisibilityPanel extends PluginPanel
 		notice.setText(off == null ? "" : html(off));
 		notice.setVisible(off != null);
 
-		finishedGrid.setVisible(anyFinished);
-		divider.setVisible(anyFinished && anyUnfinished);
-		unfinishedGrid.setVisible(anyUnfinished);
+		// A section's divider only between it and one above.
+		boolean above = false;
+		for (Group g : Group.values())
+		{
+			boolean has = filled.contains(g);
+			grids.get(g).setVisible(has);
+			if (dividers.containsKey(g))
+			{
+				dividers.get(g).setVisible(has && above);
+			}
+			above |= has;
+		}
 		unfinishedNote.setText(html("\"Unfinished potions\" is off in the plugin's settings, so these are not shown anywhere."));
-		unfinishedNote.setVisible(anyUnfinished && !switches.unfinished);
+		unfinishedNote.setVisible(filled.contains(Group.UNFINISHED) && !switches.unfinished);
 		bank.setVisible(any);
 
 		empty.setText(html(potions.isEmpty() ? "Log in to see your potions." : "Potion storage is empty."));
@@ -517,21 +554,37 @@ final class VisibilityPanel extends PluginPanel
 		}
 	}
 
-	/** The line the bank draws between its tabs, here between potions and unfinished potions. */
+	/** The line the bank draws between its tabs, here between sections, with the section's name on it. */
 	private static final class Divider extends JComponent
 	{
-		Divider()
+		private final String heading;
+
+		Divider(String heading)
 		{
-			setPreferredSize(new Dimension(10, 11));
-			setMaximumSize(new Dimension(Integer.MAX_VALUE, 11));
-			setAlignmentX(LEFT_ALIGNMENT);
+			this.heading = heading;
+			setPreferredSize(new Dimension(10, 17));
 		}
 
 		@Override
-		protected void paintComponent(Graphics g)
+		protected void paintComponent(Graphics g0)
 		{
-			g.setColor(BANK_LINE);
-			g.fillRect(6, getHeight() / 2, getWidth() - 12, 1);
+			Graphics2D g = (Graphics2D) g0.create();
+			try
+			{
+				g.setFont(FontManager.getRunescapeSmallFont());
+				FontMetrics fm = g.getFontMetrics();
+				int mid = getHeight() / 2;
+				int textW = fm.stringWidth(heading);
+				g.setColor(BANK_LINE);
+				g.fillRect(6, mid, 4, 1);
+				g.fillRect(16 + textW, mid, getWidth() - 22 - textW, 1);
+				g.setColor(BANK_TEXT);
+				g.drawString(heading, 13, mid + fm.getAscent() / 2 - 1);
+			}
+			finally
+			{
+				g.dispose();
+			}
 		}
 	}
 

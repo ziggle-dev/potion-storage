@@ -65,6 +65,7 @@ import net.runelite.api.events.WidgetDrag;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.VarClientID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.Widget;
@@ -140,6 +141,13 @@ public class PotionStoragePlugin extends Plugin
 	private static final int AFTER_BANK_TAGS = -10;
 	/** A rewritten click should be what any plugin later in line sees. */
 	private static final int EARLY = 1;
+
+	/**
+	 * Potions kept for a quest and little else, by their 1-dose id: the sidebar panel lists them apart. Magic
+	 * essence cures the Fairy Queen (Fairytale II), Guthix balance is only for vampyre juveniles (In Aid of the
+	 * Myreque), Serum 207 is for the afflicted of Mort'ton (Shades of Mort'ton).
+	 */
+	private static final Set<Integer> QUEST_POTIONS = Set.of(ItemID._1DOSEMAGICESS, ItemID.BURGH_GUTHIX_BALANCE_1, ItemID.MORT_SERUM1);
 
 	/** How many deposited potions a warning names before "and N more". */
 	private static final int DEPOSITS_NAMED = 3;
@@ -895,7 +903,9 @@ public class PotionStoragePlugin extends Plugin
 				if (k.id() > 0)
 				{
 					String name = client.getItemDefinition(k.iconId()).getName().replaceAll(DOSE_SUFFIX, "");
-					potions.add(new VisibilityPanel.Potion(k.id(), k.iconId(), name, store.doses(k), k.fullDose, k.unfinished));
+					VisibilityPanel.Group group = k.unfinished ? VisibilityPanel.Group.UNFINISHED
+						: QUEST_POTIONS.contains(k.id()) ? VisibilityPanel.Group.QUEST : VisibilityPanel.Group.POTIONS;
+					potions.add(new VisibilityPanel.Potion(k.id(), k.iconId(), name, store.doses(k), k.fullDose, group));
 				}
 			}
 		}
