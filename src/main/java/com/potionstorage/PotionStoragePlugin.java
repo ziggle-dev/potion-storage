@@ -40,6 +40,7 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.ItemContainer;
@@ -57,12 +58,17 @@ import net.runelite.api.events.ScriptPreFired;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetDrag;
+import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.VarClientID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
+import net.runelite.client.chat.ChatColorType;
+import net.runelite.client.chat.ChatMessageBuilder;
+import net.runelite.client.chat.ChatMessageManager;
+import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
@@ -170,6 +176,9 @@ public class PotionStoragePlugin extends Plugin
 	@Inject
 	private ClientToolbar clientToolbar;
 
+	@Inject
+	private ChatMessageManager chatMessageManager;
+
 	private PotionStore store;
 	private SavedOrder savedOrder;
 	private BankTagsBridge bankTags;
@@ -183,6 +192,9 @@ public class PotionStoragePlugin extends Plugin
 
 	/** What the last build drew. Client thread only. */
 	private Frame frame = new Frame(Frame.Mode.NONE);
+
+	/** Warned this login that deposited potions go into the bank. */
+	private boolean depositWarned;
 
 	// Learning the order.
 	private boolean learnPending;
@@ -544,6 +556,39 @@ public class PotionStoragePlugin extends Plugin
 	public void onVarbitChanged(VarbitChanged e)
 	{
 		store.varpChanged(e.getVarpId());
+		if (e.getVarbitId() == VarbitID.BANK_DEPOSITPOTION)
+		{
+			// Turned back on: a later turn off is worth another warning.
+			depositWarned &= e.getValue() == 0;
+			if (sidebarShown())
+			{
+				sendPotions();
+			}
+		}
+	}
+
+	/**
+	 * The bank's "Always deposit to potion storage" off sends deposited potions into the bank, where they take
+	 * slots and show twice over with potion storage's own. Said once a login, on opening the bank.
+	 */
+	@Subscribe
+	public void onWidgetLoaded(WidgetLoaded e)
+	{
+		if (e.getGroupId() != InterfaceID.BANKMAIN || depositWarned || !config.warnDeposits()
+			|| client.getVarbitValue(VarbitID.BANK_DEPOSITPOTION) != 0)
+		{
+			return;
+		}
+		depositWarned = true;
+		chatMessageManager.queue(QueuedMessage.builder()
+			.type(ChatMessageType.CONSOLE)
+			.runeLiteFormattedMessage(new ChatMessageBuilder()
+				.append(ChatColorType.HIGHLIGHT)
+				.append("Potion Storage: ")
+				.append(ChatColorType.NORMAL)
+				.append("\"Always deposit to potion storage\" is off, so potions you deposit go into your bank, not potion storage. Turn it on in the bank's menu.")
+				.build())
+			.build());
 	}
 
 	/**
@@ -601,6 +646,10 @@ public class PotionStoragePlugin extends Plugin
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged e)
 	{
+		if (e.getGameState() == GameState.LOGIN_SCREEN)
+		{
+			depositWarned = false;
+		}
 		if (sidebarShown() && (e.getGameState() == GameState.LOGGED_IN || e.getGameState() == GameState.LOGIN_SCREEN))
 		{
 			clientThread.invokeLater(this::sendPotions);
@@ -771,8 +820,10 @@ public class PotionStoragePlugin extends Plugin
 				}
 			}
 		}
+		boolean depositsToStore = client.getGameState() != GameState.LOGGED_IN
+			|| client.getVarbitValue(VarbitID.BANK_DEPOSITPOTION) != 0;
 		VisibilityPanel.Switches switches = new VisibilityPanel.Switches(config.inBank(), config.inTagTabs(),
-			config.inSearch(), config.showUnfinished(), config.sidebarCount() == SidebarCount.DOSES);
+			config.inSearch(), config.showUnfinished(), config.sidebarCount() == SidebarCount.DOSES, depositsToStore);
 		SwingUtilities.invokeLater(() -> sidebar.update(potions, switches));
 	}
 

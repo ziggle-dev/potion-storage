@@ -132,14 +132,18 @@ final class VisibilityPanel extends PluginPanel
 		final boolean unfinished;
 		/** Count in doses rather than full potions. */
 		final boolean countDoses;
+		/** The bank's "Always deposit to potion storage" is on. */
+		final boolean depositsToStore;
 
-		Switches(boolean inBank, boolean inTagTabs, boolean inSearch, boolean unfinished, boolean countDoses)
+		Switches(boolean inBank, boolean inTagTabs, boolean inSearch, boolean unfinished, boolean countDoses,
+			boolean depositsToStore)
 		{
 			this.inBank = inBank;
 			this.inTagTabs = inTagTabs;
 			this.inSearch = inSearch;
 			this.unfinished = unfinished;
 			this.countDoses = countDoses;
+			this.depositsToStore = depositsToStore;
 		}
 	}
 
@@ -154,6 +158,7 @@ final class VisibilityPanel extends PluginPanel
 	private final PotionSlot.Owner slotOwner;
 	private final CountSwitch countSwitch = new CountSwitch();
 	private final TabBar tabBar = new TabBar();
+	private final JLabel depositWarning = new JLabel();
 	private final JLabel hint = new JLabel();
 	private final JLabel notice = new JLabel();
 	private final BankArea bank = new BankArea();
@@ -168,7 +173,7 @@ final class VisibilityPanel extends PluginPanel
 
 	private Where tab = Where.BANK;
 	private List<Potion> potions = new ArrayList<>();
-	private Switches switches = new Switches(true, true, true, true, false);
+	private Switches switches = new Switches(true, true, true, true, false, true);
 
 	VisibilityPanel(IntFunction<AsyncBufferedImage> icons, PotionVisibility visibility, Runnable onOpen,
 		Consumer<Boolean> setCountDoses)
@@ -214,6 +219,12 @@ final class VisibilityPanel extends PluginPanel
 		header.add(title, BorderLayout.WEST);
 		header.add(countSwitch, BorderLayout.EAST);
 		add(header);
+
+		depositWarning.setFont(FontManager.getRunescapeSmallFont());
+		depositWarning.setForeground(ColorScheme.PROGRESS_INPROGRESS_COLOR);
+		depositWarning.setText(html("\"Always deposit to potion storage\" is off, so potions you deposit go into your bank, "
+			+ "not potion storage. Turn it on in the bank's menu."));
+		add(depositWarning);
 
 		add(tabBar);
 
@@ -321,6 +332,7 @@ final class VisibilityPanel extends PluginPanel
 		boolean anyFinished = stored.stream().anyMatch(p -> !p.unfinished);
 		boolean anyUnfinished = stored.stream().anyMatch(p -> p.unfinished);
 
+		depositWarning.setVisible(!switches.depositsToStore);
 		hint.setText(html("Click a potion to hide it in " + tab.phrase + ". Click it again to bring it back. "
 			+ "Right-click for every place at once."));
 		String off = placeOff();

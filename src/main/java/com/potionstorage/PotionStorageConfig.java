@@ -175,10 +175,21 @@ public interface PotionStorageConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "warnDeposits",
+		name = "Warn when deposits skip storage",
+		description = "Say so in the chat, the first time the bank is opened each login, when the bank's \"Always deposit to potion storage\" is off and deposited potions go into the bank instead",
+		position = 4
+	)
+	default boolean warnDeposits()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "showSidebar",
 		name = "Sidebar panel",
 		description = "Add a Potion Storage button to the sidebar, which opens a panel of every potion for choosing where each is shown",
-		position = 4
+		position = 5
 	)
 	default boolean showSidebar()
 	{
@@ -189,7 +200,7 @@ public interface PotionStorageConfig extends Config
 		keyName = "sidebarCount",
 		name = "Sidebar counts",
 		description = "Count each potion in the sidebar panel in full potions or in doses. Hovering a potion shows the other",
-		position = 5
+		position = 6
 	)
 	default SidebarCount sidebarCount()
 	{
