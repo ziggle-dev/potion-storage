@@ -294,6 +294,17 @@ final class BankArrangement
 		return changed;
 	}
 
+	/** Forget where a stored stack goes: should it come back, it is placed as a new one. True when it had a place. */
+	boolean forgetStored(int key)
+	{
+		boolean changed = false;
+		for (List<Entry> l : sections.values())
+		{
+			changed |= l.removeIf(e -> e.stored && e.id == key);
+		}
+		return changed;
+	}
+
 	/** Each real item not yet in its section's list goes in after the item the server has before it. */
 	private boolean insertNewReals(Map<Integer, List<Integer>> reals)
 	{

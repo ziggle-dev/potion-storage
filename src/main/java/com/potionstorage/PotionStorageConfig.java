@@ -104,6 +104,18 @@ public interface PotionStorageConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "placeholders",
+		name = "Placeholders",
+		description = "When you take the last of a stored potion, leave a placeholder in its place - as the bank does for its own items while its \"Always set placeholders\" is on, and only then. Release one from its menu, or all of them with the bank's \"Release all placeholders\"",
+		position = 4,
+		section = BANK_VIEW
+	)
+	default boolean placeholders()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "inTagTabs",
 		name = "Show in tag tabs",
 		description = "List a tag's stored potions after the bank's items in its tag tab, for tag tabs without a layout",

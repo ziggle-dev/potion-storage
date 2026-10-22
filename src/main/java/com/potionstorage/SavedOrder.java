@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import net.runelite.client.config.ConfigManager;
 
 /**
@@ -47,22 +48,25 @@ final class SavedOrder
 {
 	private static final String ARRANGEMENT_KEY = "arrangement";
 	private static final String SERVER_ORDER_KEY = "serverOrder";
+	/** The stored potions, by key, run out with a placeholder left where they were. */
+	private static final String PLACEHOLDERS_KEY = "placeholders";
 
 	private final ConfigManager configManager;
 
 	private String account;
 	private BankArrangement arrangement = new BankArrangement();
 	private Map<Integer, List<Integer>> lastServer;
+	private Set<Integer> placeholders = new TreeSet<>();
 
 	SavedOrder(ConfigManager configManager)
 	{
 		this.configManager = configManager;
 	}
 
-	/** Both config keys this keeps, which are not settings. */
+	/** The config keys this keeps, which are not settings. */
 	static boolean isOwnKey(String key)
 	{
-		return ARRANGEMENT_KEY.equals(key) || SERVER_ORDER_KEY.equals(key);
+		return ARRANGEMENT_KEY.equals(key) || SERVER_ORDER_KEY.equals(key) || PLACEHOLDERS_KEY.equals(key);
 	}
 
 	void reset()
@@ -70,6 +74,57 @@ final class SavedOrder
 		account = null;
 		arrangement = new BankArrangement();
 		lastServer = null;
+		placeholders = new TreeSet<>();
+	}
+
+	/** The stored potions, by key, that have run out and left a placeholder. */
+	Set<Integer> placeholders()
+	{
+		load();
+		return new TreeSet<>(placeholders);
+	}
+
+	void addPlaceholders(Collection<Integer> keys)
+	{
+		load();
+		if (placeholders.addAll(keys))
+		{
+			savePlaceholders();
+		}
+	}
+
+	/** Potions back in stock: drawn as themselves again, where their placeholders were. */
+	void fillPlaceholders(Collection<Integer> keys)
+	{
+		load();
+		if (placeholders.removeAll(keys))
+		{
+			savePlaceholders();
+		}
+	}
+
+	/** Release placeholders: gone, and their places with them, as the bank forgets a released one's slot. */
+	void release(Collection<Integer> keys)
+	{
+		load();
+		boolean changed = false;
+		for (int key : keys)
+		{
+			changed |= arrangement.forgetStored(key);
+		}
+		if (changed)
+		{
+			saveArrangement();
+		}
+		if (placeholders.removeAll(keys))
+		{
+			savePlaceholders();
+		}
+	}
+
+	private void savePlaceholders()
+	{
+		put(PLACEHOLDERS_KEY, PotionVisibility.format(placeholders));
 	}
 
 	/** What to draw for the bank as {@code reals} has it, resolved on a copy that is not kept. */
@@ -119,6 +174,7 @@ final class SavedOrder
 			account = key;
 			arrangement = BankArrangement.decode(get(ARRANGEMENT_KEY));
 			lastServer = BankArrangement.decodeOrder(get(SERVER_ORDER_KEY));
+			placeholders = new TreeSet<>(PotionVisibility.parse(get(PLACEHOLDERS_KEY)));
 		}
 	}
 

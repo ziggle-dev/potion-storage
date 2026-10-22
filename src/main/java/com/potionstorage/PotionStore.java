@@ -141,9 +141,17 @@ final class PotionStore
 		final Kind kind;
 		/** Every item id it might be tagged as: the dose paid out, then each dose. */
 		final List<Integer> ids;
+		/** Run out, and kept in its place as a placeholder: holds nothing, withdraws nothing. */
+		final boolean placeholder;
 
 		Stack(int key, int itemId, int quantity, String name, Kind kind)
 		{
+			this(key, itemId, quantity, name, kind, false);
+		}
+
+		Stack(int key, int itemId, int quantity, String name, Kind kind, boolean placeholder)
+		{
+			this.placeholder = placeholder;
 			this.key = key;
 			this.itemId = itemId;
 			this.quantity = quantity;
@@ -339,6 +347,52 @@ final class PotionStore
 	int doses(Kind kind)
 	{
 		return kind.index < doses.length ? doses[kind.index] : 0;
+	}
+
+	/** Whether the store has been read this bank session, so its numbers mean something. */
+	boolean hasRead()
+	{
+		return doses.length > 0;
+	}
+
+	/** The potions, by key, the store holds any of by the server's numbers. Empty until it has been read. */
+	Set<Integer> stockedKeys()
+	{
+		Set<Integer> out = new HashSet<>();
+		if (kinds != null)
+		{
+			for (Kind k : kinds)
+			{
+				if (stock(k) > 0)
+				{
+					out.add(keyOf(k));
+				}
+			}
+		}
+		return out;
+	}
+
+	/** A placeholder for the potion known as {@code key}, drawn as the dose it was paid out at; null if none. */
+	Stack placeholder(int key)
+	{
+		if (kinds == null)
+		{
+			return null;
+		}
+		for (Kind k : kinds)
+		{
+			if (keyOf(k) == key)
+			{
+				int dose = k.index < withdraw.length && withdraw[k.index] > 0 ? withdraw[k.index] : k.fullDose;
+				int itemId = k.potionEnum.getIntValue(dose);
+				if (itemId <= 0)
+				{
+					itemId = k.iconId();
+				}
+				return new Stack(key, itemId, 0, client.getItemDefinition(itemId).getName(), k, true);
+			}
+		}
+		return null;
 	}
 
 	/** Every dose of every potion kind {@code which} picks. Empty until the store has been read. */

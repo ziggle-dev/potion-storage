@@ -64,6 +64,9 @@ final class BankWidgets
 	static final String WITHDRAW_ALL_BUT_ONE = WITHDRAW + "All-but-1";
 	/** How faded a stack with none left is drawn, like the game's placeholders. */
 	static final int EMPTY_OPACITY = 120;
+	/** A bank placeholder's option, and where the game puts it. */
+	static final String RELEASE = "Release";
+	static final int RELEASE_OP = 7;
 
 	/** A bank stack's withdraw options are its ops 1 to 8; 9 and 10 are Placeholder and Examine. */
 	static final int LAST_WITHDRAW_OP = 8;

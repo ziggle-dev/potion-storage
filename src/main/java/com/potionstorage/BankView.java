@@ -37,6 +37,8 @@ import static com.potionstorage.BankWidgets.ITEM_W;
 import static com.potionstorage.BankWidgets.LABEL_BASE;
 import static com.potionstorage.BankWidgets.LINE_ABOVE;
 import static com.potionstorage.BankWidgets.PER_ROW;
+import static com.potionstorage.BankWidgets.RELEASE;
+import static com.potionstorage.BankWidgets.RELEASE_OP;
 import static com.potionstorage.BankWidgets.ROW;
 import static com.potionstorage.BankWidgets.SECTIONS;
 import static com.potionstorage.BankWidgets.SECTION_GAP;
@@ -668,6 +670,11 @@ final class BankView
 	{
 		c.setOriginalWidth(ITEM_W);
 		c.setOriginalHeight(ITEM_H);
+		if (s.placeholder)
+		{
+			drawPlaceholder(c, s);
+			return;
+		}
 		c.setItemId(s.itemId);
 		c.setItemQuantity(s.quantity);
 		c.setItemQuantityMode(ItemQuantityMode.STACKABLE);
@@ -699,6 +706,21 @@ final class BankView
 		}
 		// Faded like a placeholder while a withdrawal of the last of it is still on its way.
 		c.setOpacity(s.quantity > 0 ? 0 : EMPTY_OPACITY);
+		c.setOnDragListener(ScriptID.BANKMAIN_DRAGSCROLL, ScriptEvent.WIDGET_ID, ScriptEvent.WIDGET_INDEX,
+			ScriptEvent.MOUSE_X, ScriptEvent.MOUSE_Y, InterfaceID.Bankmain.SCROLLBAR, 0);
+	}
+
+	/** A stored potion run out, drawn as the game draws a bank placeholder: its placeholder item, faded, Release. */
+	private void drawPlaceholder(Widget c, Stack s)
+	{
+		int placeholderId = client.getItemDefinition(s.itemId).getPlaceholderId();
+		c.setItemId(placeholderId > 0 ? placeholderId : s.itemId);
+		c.setItemQuantity(0);
+		c.setItemQuantityMode(ItemQuantityMode.STACKABLE);
+		c.setName("<col=ff9040>" + s.name + "</col>");
+		c.clearActions();
+		c.setAction(RELEASE_OP, RELEASE);
+		c.setOpacity(EMPTY_OPACITY);
 		c.setOnDragListener(ScriptID.BANKMAIN_DRAGSCROLL, ScriptEvent.WIDGET_ID, ScriptEvent.WIDGET_INDEX,
 			ScriptEvent.MOUSE_X, ScriptEvent.MOUSE_Y, InterfaceID.Bankmain.SCROLLBAR, 0);
 	}

@@ -36,6 +36,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -442,13 +443,15 @@ public class PotionStoragePlugin extends Plugin
 		{
 			tidyLayout(items, bank);
 		}
-		List<Stack> stacks = store.stacks();
+		List<Stack> stacks = new ArrayList<>(store.stacks());
+		stacks.addAll(placeholders(stacks));
 		List<Stack> shownStacks = storeShownIn(shown, stacks);
 		if (shownStacks.isEmpty())
 		{
 			return built;
 		}
-		// A potion the bank also holds is shown on the bank's own stack (BankView.combine), not as a stack of its own.
+		// A potion the bank also holds is shown on the bank's own stack (BankView.combine), not as a stack of its own;
+		// its placeholder, likewise, on the bank's own one.
 		Set<Integer> held = config.combineWithBank() ? view.itemsHeld(bank) : Collections.emptySet();
 		List<Stack> loose = shownStacks.stream().filter(s -> !held.contains(s.itemId)).collect(Collectors.toList());
 		switch (shown)
@@ -469,7 +472,8 @@ public class PotionStoragePlugin extends Plugin
 		}
 		if (config.combineWithBank())
 		{
-			view.combine(built, items, bank, shownStacks, config.combinedWithdraw() == CombinedWithdraw.POTION_STORAGE_FIRST);
+			List<Stack> holding = shownStacks.stream().filter(s -> !s.placeholder).collect(Collectors.toList());
+			view.combine(built, items, bank, holding, config.combinedWithdraw() == CombinedWithdraw.POTION_STORAGE_FIRST);
 		}
 		return built;
 	}
@@ -570,6 +574,46 @@ public class PotionStoragePlugin extends Plugin
 	}
 
 	// ---- the store ----
+
+	/**
+	 * Read the store if it changed, and keep a placeholder for each potion that ran out - while the bank keeps
+	 * them for its own items. A potion back in stock is drawn as itself again, where its placeholder was. Not
+	 * inside a script. True when the store's numbers changed.
+	 */
+	private boolean readStore()
+	{
+		boolean wasRead = store.hasRead();
+		Set<Integer> before = store.stockedKeys();
+		if (!store.readIfDirty())
+		{
+			return false;
+		}
+		if (wasRead)
+		{
+			Set<Integer> now = store.stockedKeys();
+			Set<Integer> refilled = savedOrder.placeholders();
+			refilled.retainAll(now);
+			savedOrder.fillPlaceholders(refilled);
+			before.removeAll(now);
+			if (!before.isEmpty() && config.placeholders() && client.getVarbitValue(VarbitID.BANK_LEAVEPLACEHOLDERS) == 1)
+			{
+				savedOrder.addPlaceholders(before);
+			}
+		}
+		return true;
+	}
+
+	/** The placeholders to draw beside {@code stocked}: one for each potion run out that left one. */
+	private List<Stack> placeholders(List<Stack> stocked)
+	{
+		if (!config.placeholders())
+		{
+			return Collections.emptyList();
+		}
+		Set<Integer> keys = savedOrder.placeholders();
+		stocked.forEach(s -> keys.remove(s.key));
+		return keys.stream().map(store::placeholder).filter(Objects::nonNull).collect(Collectors.toList());
+	}
 
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged e)
@@ -677,7 +721,7 @@ public class PotionStoragePlugin extends Plugin
 	@Subscribe
 	public void onClientTick(ClientTick e)
 	{
-		if (bankShown() && store.readIfDirty())
+		if (bankShown() && readStore())
 		{
 			relayout();
 			if (sidebarShown())
@@ -692,7 +736,7 @@ public class PotionStoragePlugin extends Plugin
 	public void onGameTick(GameTick e)
 	{
 		// Away from the bank the store is read only for the sidebar panel's dose counts.
-		if (!bankShown() && sidebarShown() && store.readIfDirty())
+		if (!bankShown() && sidebarShown() && readStore())
 		{
 			sendPotions();
 		}
@@ -762,6 +806,16 @@ public class PotionStoragePlugin extends Plugin
 			&& Text.removeTags(e.getMenuOption()).startsWith(REMOVE_TAG))
 		{
 			removeStoredFromTag(e.getItemId());
+		}
+		else if (isWidgetOp(e.getMenuAction()) && frame.isStored(e.getParam0()) && frame.stackOn(e.getParam0()).placeholder)
+		{
+			// A placeholder is this plugin's alone: nothing of it goes to the server.
+			e.consume();
+			if (BankWidgets.RELEASE.equals(Text.removeTags(e.getMenuOption() == null ? "" : e.getMenuOption())))
+			{
+				savedOrder.release(List.of(frame.stackOn(e.getParam0()).key));
+				relayout();
+			}
 		}
 		else if (isWidgetOp(e.getMenuAction()) && frame.withdrawsFromStore(e.getParam0()))
 		{
@@ -886,7 +940,7 @@ public class PotionStoragePlugin extends Plugin
 		List<VisibilityPanel.Potion> potions = new ArrayList<>();
 		if (client.getGameState() == GameState.LOGGED_IN)
 		{
-			if (store.readIfDirty() && bankShown())
+			if (readStore() && bankShown())
 			{
 				relayout();
 			}
