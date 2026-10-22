@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.IntUnaryOperator;
 import java.util.stream.Collectors;
 
 /**
@@ -176,6 +177,17 @@ final class BankArrangement
 	Resolved resolve(Map<Integer, List<Integer>> reals, Map<Integer, List<Integer>> previous, Collection<Integer> stored,
 		Set<Integer> existing)
 	{
+		return resolve(reals, previous, stored, existing, key -> MAIN);
+	}
+
+	/**
+	 * As {@link #resolve(Map, Map, Collection, Set)}, with a stored stack new to the order going to the end of
+	 * the section {@code newSection} gives for its key - the tab open when it was deposited, as the game puts a
+	 * deposited item there - if that tab exists, and to the untabbed part if not.
+	 */
+	Resolved resolve(Map<Integer, List<Integer>> reals, Map<Integer, List<Integer>> previous, Collection<Integer> stored,
+		Set<Integer> existing, IntUnaryOperator newSection)
+	{
 		boolean changed = followRenumbering(reals);
 		List<Entry> homeless = new ArrayList<>();
 		changed |= dropVanishedTabs(existing, homeless);
@@ -183,7 +195,11 @@ final class BankArrangement
 		changed |= dropStrays(reals, placed);
 		changed |= insertNewReals(reals);
 		changed |= followServerMoves(reals, previous);
-		changed |= placeNewStored(homeless, stored, placed);
+		changed |= placeNewStored(homeless, stored, placed, key ->
+		{
+			int s = newSection.applyAsInt(key);
+			return existing.contains(s) ? s : MAIN;
+		});
 		return new Resolved(drawn(reals, new HashSet<>(stored)), changed);
 	}
 
@@ -419,7 +435,8 @@ final class BankArrangement
 	}
 
 	/** After the real items, so a stack new to the bank's view starts out behind them. */
-	private boolean placeNewStored(List<Entry> homeless, Collection<Integer> stored, Set<Integer> placed)
+	private boolean placeNewStored(List<Entry> homeless, Collection<Integer> stored, Set<Integer> placed,
+		IntUnaryOperator newSection)
 	{
 		boolean changed = false;
 		for (Entry e : homeless)
@@ -433,7 +450,7 @@ final class BankArrangement
 		{
 			if (placed.add(key))
 			{
-				list(MAIN).add(Entry.stored(key));
+				list(newSection.applyAsInt(key)).add(Entry.stored(key));
 				changed = true;
 			}
 		}

@@ -202,6 +202,9 @@ public class PotionStoragePlugin extends Plugin
 	/** What the last build drew. Client thread only. */
 	private Frame frame = new Frame(Frame.Mode.NONE);
 
+	/** The tab open when each potion was deposited this bank session, by key: where it goes, if new to the order. */
+	private final Map<Integer, Integer> depositedTo = new HashMap<>();
+
 	/** Warned this login that deposited potions go into the bank. */
 	private boolean depositWarned;
 	/** The bank's count of each potion potion storage keeps, as last seen this bank session; null before. */
@@ -243,7 +246,7 @@ public class PotionStoragePlugin extends Plugin
 		store = new PotionStore(client);
 		savedOrder = new SavedOrder(configManager);
 		bankTags = new BankTagsBridge(pluginManager, configManager, itemManager, chatboxPanelManager, clientThread);
-		view = new BankView(client, config, savedOrder);
+		view = new BankView(client, config, savedOrder, this::depositedTo);
 		drags = new BankDrags(client, savedOrder, this::relayout);
 		panel = new StorePanel(client, config, pluginManager, bankTags, this::relayout);
 		storeButton = new StoreButton(client);
@@ -304,6 +307,7 @@ public class PotionStoragePlugin extends Plugin
 		bankSignature = 0;
 		learnedSignature = 0;
 		bankPotions = null;
+		depositedTo.clear();
 	}
 
 	@Subscribe
@@ -581,7 +585,8 @@ public class PotionStoragePlugin extends Plugin
 
 	/**
 	 * Read the store if it changed, and keep a placeholder for each potion that ran out - while the bank keeps
-	 * them for its own items. A potion back in stock is drawn as itself again, where its placeholder was. Not
+	 * them for its own items. One that leaves none loses its place, as a bank item does: deposited again, it
+	 * goes where a deposit goes. A potion back in stock is drawn as itself again, where its placeholder was. Not
 	 * inside a script. True when the store's numbers changed.
 	 */
 	private boolean readStore()
@@ -595,6 +600,8 @@ public class PotionStoragePlugin extends Plugin
 		if (wasRead)
 		{
 			Set<Integer> now = store.stockedKeys();
+			int tab = view.depositSection();
+			now.stream().filter(k -> !before.contains(k)).forEach(k -> depositedTo.put(k, tab));
 			Set<Integer> refilled = savedOrder.placeholders();
 			refilled.retainAll(now);
 			savedOrder.fillPlaceholders(refilled);
@@ -603,8 +610,18 @@ public class PotionStoragePlugin extends Plugin
 			{
 				savedOrder.addPlaceholders(before);
 			}
+			else if (!before.isEmpty())
+			{
+				savedOrder.release(before);
+			}
 		}
 		return true;
+	}
+
+	/** Where a stored potion new to the order goes: the tab it was deposited in, or the untabbed part. */
+	private int depositedTo(int key)
+	{
+		return depositedTo.getOrDefault(key, BankArrangement.MAIN);
 	}
 
 	/** The placeholders to draw beside {@code stocked}: one for each potion run out that left one. */
@@ -771,7 +788,8 @@ public class PotionStoragePlugin extends Plugin
 			learnPending = false;
 			learnedSignature = sig;
 			BankView.ServerBank server = view.readServer(bank);
-			savedOrder.learn(server.reals, store.stacks().stream().map(s -> s.key).collect(Collectors.toList()), server.existing);
+			savedOrder.learn(server.reals, store.stacks().stream().map(s -> s.key).collect(Collectors.toList()), server.existing,
+				this::depositedTo);
 		}
 	}
 

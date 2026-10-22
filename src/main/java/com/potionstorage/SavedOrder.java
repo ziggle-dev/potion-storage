@@ -34,6 +34,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.IntUnaryOperator;
 import net.runelite.client.config.ConfigManager;
 
 /**
@@ -127,18 +128,23 @@ final class SavedOrder
 		put(PLACEHOLDERS_KEY, PotionVisibility.format(placeholders));
 	}
 
-	/** What to draw for the bank as {@code reals} has it, resolved on a copy that is not kept. */
-	BankArrangement.Resolved draw(Map<Integer, List<Integer>> reals, Collection<Integer> stored, Set<Integer> existing)
+	/**
+	 * What to draw for the bank as {@code reals} has it, resolved on a copy that is not kept. A stored stack new
+	 * to the order goes at the end of the section {@code newSection} gives for its key.
+	 */
+	BankArrangement.Resolved draw(Map<Integer, List<Integer>> reals, Collection<Integer> stored, Set<Integer> existing,
+		IntUnaryOperator newSection)
 	{
 		load();
-		return arrangement.copy().resolve(reals, lastServer, stored, existing);
+		return arrangement.copy().resolve(reals, lastServer, stored, existing, newSection);
 	}
 
 	/** Fold a settled bank into what is kept, and remember it as the server's order last seen. */
-	void learn(Map<Integer, List<Integer>> reals, Collection<Integer> stored, Set<Integer> existing)
+	void learn(Map<Integer, List<Integer>> reals, Collection<Integer> stored, Set<Integer> existing,
+		IntUnaryOperator newSection)
 	{
 		load();
-		if (arrangement.resolve(reals, lastServer, stored, existing).changed)
+		if (arrangement.resolve(reals, lastServer, stored, existing, newSection).changed)
 		{
 			saveArrangement();
 		}

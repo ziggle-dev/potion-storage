@@ -108,6 +108,21 @@ public class BankArrangementTest
 	}
 
 	@Test
+	public void aNewStoredStackGoesToTheOpenTab()
+	{
+		BankArrangement a = new BankArrangement();
+		Map<Integer, List<Integer>> reals = bank(0, ids(1, 2), 1, ids(3, 4));
+		Set<Integer> existing = sections(0, 1);
+		a.resolve(reals, null, stored(900), existing, k -> 0);
+		BankArrangement.Resolved r = a.resolve(reals, null, stored(900, 901), existing, k -> 1);
+		assertEquals("1 2 p900", show(r.drawn, 0));
+		assertEquals("3 4 p901", show(r.drawn, 1));
+		// A tab that does not exist: the untabbed part.
+		r = a.resolve(reals, null, stored(900, 901, 902), existing, k -> 5);
+		assertEquals("1 2 p900 p902", show(r.drawn, 0));
+	}
+
+	@Test
 	public void swapModeTradesTwoPlaces()
 	{
 		BankArrangement a = new BankArrangement();

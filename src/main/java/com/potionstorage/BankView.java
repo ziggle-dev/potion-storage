@@ -59,6 +59,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.IntUnaryOperator;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import net.runelite.api.Client;
@@ -120,12 +121,15 @@ final class BankView
 	private final Client client;
 	private final PotionStorageConfig config;
 	private final SavedOrder savedOrder;
+	/** Where a stored stack new to the order goes, by key: the tab it was deposited in. */
+	private final IntUnaryOperator newSection;
 
-	BankView(Client client, PotionStorageConfig config, SavedOrder savedOrder)
+	BankView(Client client, PotionStorageConfig config, SavedOrder savedOrder, IntUnaryOperator newSection)
 	{
 		this.client = client;
 		this.config = config;
 		this.savedOrder = savedOrder;
+		this.newSection = newSection;
 	}
 
 	// ---- what the bank holds ----
@@ -135,6 +139,13 @@ final class BankView
 	{
 		ItemComposition def = client.getItemDefinition(itemId);
 		return def.getPlaceholderTemplateId() != -1 && def.getPlaceholderId() != -1 ? def.getPlaceholderId() : itemId;
+	}
+
+	/** Where the game puts a deposited item: the numbered tab open, or the untabbed part. */
+	int depositSection()
+	{
+		int tab = client.getVarbitValue(VarbitID.BANK_CURRENTTAB);
+		return tab >= 1 && tab < SECTIONS ? tab : BankArrangement.MAIN;
 	}
 
 	/** Every item the bank holds, a placeholder counted as its item. */
@@ -289,7 +300,7 @@ final class BankView
 		if (config.inBank())
 		{
 			List<Integer> keys = stacks.stream().map(s -> s.key).collect(Collectors.toList());
-			BankArrangement.Resolved resolved = savedOrder.draw(server.reals, keys, server.existing);
+			BankArrangement.Resolved resolved = savedOrder.draw(server.reals, keys, server.existing, newSection);
 			frame.orderChanged = resolved.changed;
 			return resolved.drawn;
 		}
