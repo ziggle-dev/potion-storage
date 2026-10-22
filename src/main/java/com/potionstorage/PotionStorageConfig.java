@@ -177,7 +177,7 @@ public interface PotionStorageConfig extends Config
 	@ConfigItem(
 		keyName = "warnDeposits",
 		name = "Warn when deposits skip storage",
-		description = "Say so in the chat, the first time the bank is opened each login, when the bank's \"Always deposit to potion storage\" is off and deposited potions go into the bank instead",
+		description = "Say so in the chat when the bank's \"Always deposit to potion storage\" is off: the first time the bank is opened each login, and when a potion you deposit goes into the bank instead of potion storage",
 		position = 4
 	)
 	default boolean warnDeposits()

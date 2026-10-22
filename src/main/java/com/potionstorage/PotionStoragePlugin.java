@@ -33,7 +33,9 @@ import static com.potionstorage.BankWidgets.isWidgetOp;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -43,6 +45,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
@@ -50,6 +53,7 @@ import net.runelite.api.ScriptID;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.PostMenuSort;
@@ -137,6 +141,9 @@ public class PotionStoragePlugin extends Plugin
 	/** A rewritten click should be what any plugin later in line sees. */
 	private static final int EARLY = 1;
 
+	/** How many deposited potions a warning names before "and N more". */
+	private static final int DEPOSITS_NAMED = 3;
+
 	/** A potion's dose at the end of its name: "Saradomin brew(4)". */
 	private static final String DOSE_SUFFIX = "\\s*\\(\\d\\)$";
 
@@ -195,6 +202,10 @@ public class PotionStoragePlugin extends Plugin
 
 	/** Warned this login that deposited potions go into the bank. */
 	private boolean depositWarned;
+	/** The bank's count of each potion potion storage keeps, as last seen this bank session; null before. */
+	private Map<Integer, Integer> bankPotions;
+	/** Warned this bank session that a deposit went into the bank. */
+	private boolean depositSkipWarned;
 
 	// Learning the order.
 	private boolean learnPending;
@@ -280,6 +291,8 @@ public class PotionStoragePlugin extends Plugin
 		learnPending = false;
 		bankSignature = 0;
 		learnedSignature = 0;
+		bankPotions = null;
+		depositSkipWarned = false;
 	}
 
 	@Subscribe
@@ -580,13 +593,74 @@ public class PotionStoragePlugin extends Plugin
 			return;
 		}
 		depositWarned = true;
+		warnInChat("\"Always deposit to potion storage\" is off, so potions you deposit go into your bank, not potion storage. "
+			+ "Turn it on in the bank's menu.");
+	}
+
+	/**
+	 * A potion that potion storage keeps, landing in the bank because "Always deposit to potion storage" is off:
+	 * say what went where, once a bank session. Seen as the bank's stack of it growing - nothing else adds to the
+	 * bank while it is open.
+	 */
+	@Subscribe
+	public void onItemContainerChanged(ItemContainerChanged e)
+	{
+		if (e.getContainerId() != InventoryID.BANK)
+		{
+			return;
+		}
+		Map<Integer, Integer> before = bankPotions;
+		bankPotions = potionCounts(e.getItemContainer());
+		if (before == null || depositSkipWarned || !config.warnDeposits()
+			|| client.getVarbitValue(VarbitID.BANK_DEPOSITPOTION) != 0)
+		{
+			return;
+		}
+		List<String> added = new ArrayList<>();
+		bankPotions.forEach((id, n) ->
+		{
+			int more = n - before.getOrDefault(id, 0);
+			if (more > 0)
+			{
+				added.add(more + " x " + itemManager.getItemComposition(id).getName());
+			}
+		});
+		if (added.isEmpty())
+		{
+			return;
+		}
+		depositSkipWarned = true;
+		String what = added.size() <= DEPOSITS_NAMED ? String.join(", ", added)
+			: String.join(", ", added.subList(0, DEPOSITS_NAMED)) + " and " + (added.size() - DEPOSITS_NAMED) + " more";
+		warnInChat(what + " went into your bank, not potion storage: \"Always deposit to potion storage\" is off. "
+			+ "Turn it on in the bank's menu.");
+	}
+
+	/** How many of each potion potion storage keeps the bank holds. */
+	private Map<Integer, Integer> potionCounts(ItemContainer bank)
+	{
+		store.kinds();
+		Set<Integer> potions = store.idsOf(k -> true);
+		Map<Integer, Integer> out = new HashMap<>();
+		for (Item item : bank.getItems())
+		{
+			if (potions.contains(item.getId()))
+			{
+				out.merge(item.getId(), item.getQuantity(), Integer::sum);
+			}
+		}
+		return out;
+	}
+
+	private void warnInChat(String text)
+	{
 		chatMessageManager.queue(QueuedMessage.builder()
 			.type(ChatMessageType.CONSOLE)
 			.runeLiteFormattedMessage(new ChatMessageBuilder()
 				.append(ChatColorType.HIGHLIGHT)
 				.append("Potion Storage: ")
 				.append(ChatColorType.NORMAL)
-				.append("\"Always deposit to potion storage\" is off, so potions you deposit go into your bank, not potion storage. Turn it on in the bank's menu.")
+				.append(text)
 				.build())
 			.build());
 	}
