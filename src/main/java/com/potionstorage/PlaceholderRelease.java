@@ -29,7 +29,6 @@ import net.runelite.api.Client;
 import net.runelite.api.Item;
 import net.runelite.api.ItemComposition;
 import net.runelite.api.ItemContainer;
-import net.runelite.api.ScriptEvent;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
@@ -39,11 +38,11 @@ import net.runelite.client.util.Text;
 /**
  * The bank menu's "Release all placeholders", made to count and release this plugin's placeholders with the
  * bank's own. While there are any of ours, the button is drawn as the game draws it with placeholders to
- * release - its red frame, its orange text, the count in its text and its option - and, with none of the bank's
- * own, given the game's own click for it, which opens the game's "Release all placeholders?" pop-up. Confirming
- * there releases ours too, places and all. The look and the click are learned from the game whenever it shows
- * them, and are the ones seen in it otherwise. With none of ours left, the game redraws the button itself.
- * Client thread only.
+ * release - its red frame, its orange text, the count in its text and its option - learned from the game
+ * whenever it shows it, and as seen in it otherwise. Confirming in the game's "Release all placeholders?"
+ * pop-up releases ours too, places and all. The server opens that pop-up only for a bank with placeholders of
+ * its own, so with only ours the click opens {@link ReleasePopup}, drawn the same, instead. With none of ours
+ * left, the game redraws the button itself. Client thread only.
  */
 final class PlaceholderRelease
 {
@@ -57,6 +56,7 @@ final class PlaceholderRelease
 	private final SavedOrder savedOrder;
 	private final BooleanSupplier enabled;
 	private final Runnable relayout;
+	private final ReleasePopup popup;
 
 	/** The bank's own placeholders, as last counted. */
 	private int bankPlaceholders;
@@ -66,7 +66,6 @@ final class PlaceholderRelease
 	// The button as the game draws it with placeholders to release.
 	private int[] enabledFrame = {1150, 1151, 1152, 1153, 1154, 1155, 1156, 1157, 1158};
 	private int enabledColor = 0xff981f;
-	private Object[] enabledClick = {1273, ScriptEvent.MENU_OP, InterfaceID.Bankmain.RELEASE_PLACEHOLDERS, InterfaceID.Bankmain.LOCKS};
 
 	PlaceholderRelease(Client client, SavedOrder savedOrder, BooleanSupplier enabled, Runnable relayout)
 	{
@@ -74,6 +73,7 @@ final class PlaceholderRelease
 		this.savedOrder = savedOrder;
 		this.enabled = enabled;
 		this.relayout = relayout;
+		this.popup = new ReleasePopup(client);
 	}
 
 	void bankChanged(ItemContainer bank)
@@ -138,10 +138,6 @@ final class PlaceholderRelease
 			}
 		}
 		button.setAction(0, label);
-		if (bankPlaceholders == 0)
-		{
-			button.setOnOpListener(enabledClick);
-		}
 		counted = true;
 	}
 
@@ -157,11 +153,6 @@ final class PlaceholderRelease
 			enabledFrame = frame;
 		}
 		enabledColor = text.getTextColor();
-		Object[] click = button.getOnOpListener();
-		if (click != null && click.length > 0)
-		{
-			enabledClick = click.clone();
-		}
 	}
 
 	/** Have the game draw the button again, as it does when the bank changes. */
@@ -199,15 +190,38 @@ final class PlaceholderRelease
 		return null;
 	}
 
-	/** "Release them all" in the game's pop-up: ours go too. */
+	/**
+	 * The button, with only ours to release: our pop-up, and nothing to the server. An answer in our pop-up. And
+	 * "Release them all" in the game's: ours go too.
+	 */
 	void clicked(MenuOptionClicked e)
 	{
-		if (e.getParam1() == InterfaceID.Popupoverlay.BUTTON_1 && e.getMenuOption() != null
+		Boolean answer = popup.answer(e);
+		if (answer != null)
+		{
+			e.consume();
+			popup.close();
+			if (answer)
+			{
+				releaseAll();
+			}
+		}
+		else if (e.getParam1() == InterfaceID.Bankmain.RELEASE_PLACEHOLDERS && bankPlaceholders == 0 && ours() > 0)
+		{
+			e.consume();
+			popup.open();
+		}
+		else if (e.getParam1() == InterfaceID.Popupoverlay.BUTTON_1 && e.getMenuOption() != null
 			&& CONFIRM.equals(Text.removeTags(e.getMenuOption())) && popupIsRelease())
 		{
-			savedOrder.release(savedOrder.placeholders());
-			relayout.run();
+			releaseAll();
 		}
+	}
+
+	private void releaseAll()
+	{
+		savedOrder.release(savedOrder.placeholders());
+		relayout.run();
 	}
 
 	/** The game's pop-up is a general one: it is this one only under this title. */
