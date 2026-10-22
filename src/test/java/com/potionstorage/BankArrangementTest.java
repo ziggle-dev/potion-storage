@@ -91,6 +91,23 @@ public class BankArrangementTest
 	}
 
 	@Test
+	public void aStoredStackOutOfStockKeepsItsPlaceUntilForgotten()
+	{
+		BankArrangement a = new BankArrangement();
+		Map<Integer, List<Integer>> reals = bank(0, ids(1, 2, 3));
+		Map<Integer, List<Entry>> d = draw(a, reals, stored(900, 901));
+		a.move(d, new Pos(0, 3), new Pos(0, 1), Drop.INSERT);
+		assertEquals("1 p900 2 3 p901", show(draw(a, reals, stored(900, 901)), 0));
+		// Run out: not drawn, but its place is kept for when it is back.
+		assertEquals("1 2 3 p901", show(draw(a, reals, stored(901)), 0));
+		assertEquals("1 p900 2 3 p901", show(draw(a, reals, stored(900, 901)), 0));
+		// Released: back as a new stack, at the end of the untabbed part.
+		assertTrue(a.forgetStored(900));
+		assertFalse(a.forgetStored(900));
+		assertEquals("1 2 3 p901 p900", show(draw(a, reals, stored(900, 901)), 0));
+	}
+
+	@Test
 	public void swapModeTradesTwoPlaces()
 	{
 		BankArrangement a = new BankArrangement();

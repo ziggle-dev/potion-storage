@@ -194,6 +194,7 @@ public class PotionStoragePlugin extends Plugin
 	private BankDrags drags;
 	private StorePanel panel;
 	private StoreButton storeButton;
+	private PlaceholderRelease placeholderRelease;
 	private PotionVisibility visibility;
 	private VisibilityPanel sidebar;
 	private NavigationButton sidebarButton;
@@ -246,6 +247,8 @@ public class PotionStoragePlugin extends Plugin
 		drags = new BankDrags(client, savedOrder, this::relayout);
 		panel = new StorePanel(client, config, pluginManager, bankTags, this::relayout);
 		storeButton = new StoreButton(client);
+		placeholderRelease = new PlaceholderRelease(client, clientThread, chatboxPanelManager, savedOrder,
+			config::placeholders, this::relayout);
 		visibility = new PotionVisibility(key -> configManager.getConfiguration(PotionStorageConfig.GROUP, key), this::saveVisibility);
 		sidebar = new VisibilityPanel(itemManager::getImage, visibility, () -> clientThread.invokeLater(this::sendPotions),
 			doses -> configManager.setConfiguration(PotionStorageConfig.GROUP, "sidebarCount", doses ? SidebarCount.DOSES : SidebarCount.POTIONS));
@@ -270,6 +273,7 @@ public class PotionStoragePlugin extends Plugin
 			if (bankShown() && bank != null)
 			{
 				bankPotions = potionCounts(bank);
+				placeholderRelease.bankChanged(bank);
 			}
 		});
 	}
@@ -659,6 +663,7 @@ public class PotionStoragePlugin extends Plugin
 		{
 			return;
 		}
+		placeholderRelease.bankChanged(e.getItemContainer());
 		Map<Integer, Integer> before = bankPotions;
 		bankPotions = potionCounts(e.getItemContainer());
 		if (before == null || !config.warnDeposits()
@@ -721,6 +726,10 @@ public class PotionStoragePlugin extends Plugin
 	@Subscribe
 	public void onClientTick(ClientTick e)
 	{
+		if (bankShown())
+		{
+			placeholderRelease.syncButton();
+		}
 		if (bankShown() && readStore())
 		{
 			relayout();
@@ -794,6 +803,11 @@ public class PotionStoragePlugin extends Plugin
 	@Subscribe(priority = EARLY)
 	public void onMenuOptionClicked(MenuOptionClicked e)
 	{
+		placeholderRelease.clicked(e);
+		if (e.isConsumed())
+		{
+			return;
+		}
 		if (e.getParam1() == InterfaceID.Bankmain.POTIONSTORE_CONTAINER)
 		{
 			panel.click(e);
