@@ -27,6 +27,8 @@ package com.potionstorage;
 import com.potionstorage.PotionVisibility.Where;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -34,6 +36,8 @@ import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridLayout;
+import java.awt.Insets;
+import java.awt.LayoutManager;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -44,7 +48,6 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.stream.Collectors;
-import javax.swing.BoxLayout;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -182,6 +185,8 @@ final class VisibilityPanel extends PluginPanel
 		this.visibility = visibility;
 		this.onOpen = onOpen;
 		this.setCountDoses = setCountDoses;
+		// RuneLite's own panel layout keeps room for a hidden note; this gives it none.
+		setLayout(new Column(3));
 		this.slotOwner = new PotionSlot.Owner()
 		{
 			@Override
@@ -236,7 +241,7 @@ final class VisibilityPanel extends PluginPanel
 		notice.setForeground(ColorScheme.PROGRESS_INPROGRESS_COLOR);
 		add(notice);
 
-		bank.setLayout(new BoxLayout(bank, BoxLayout.Y_AXIS));
+		bank.setLayout(new Column(0));
 		bank.add(finishedGrid);
 		bank.add(divider);
 		unfinishedNote.setFont(FontManager.getRunescapeSmallFont());
@@ -415,6 +420,70 @@ final class VisibilityPanel extends PluginPanel
 			}
 		});
 		return l;
+	}
+
+	/** Top to bottom at full width, each at its height, with a gap between those shown: a hidden one takes no room. */
+	private static final class Column implements LayoutManager
+	{
+		private final int gap;
+
+		Column(int gap)
+		{
+			this.gap = gap;
+		}
+
+		@Override
+		public void addLayoutComponent(String name, Component c)
+		{
+		}
+
+		@Override
+		public void removeLayoutComponent(Component c)
+		{
+		}
+
+		@Override
+		public Dimension preferredLayoutSize(Container parent)
+		{
+			Insets in = parent.getInsets();
+			int w = 0;
+			int h = 0;
+			int shown = 0;
+			for (Component c : parent.getComponents())
+			{
+				if (c.isVisible())
+				{
+					Dimension d = c.getPreferredSize();
+					w = Math.max(w, d.width);
+					h += d.height;
+					shown++;
+				}
+			}
+			return new Dimension(w + in.left + in.right, h + Math.max(shown - 1, 0) * gap + in.top + in.bottom);
+		}
+
+		@Override
+		public Dimension minimumLayoutSize(Container parent)
+		{
+			return preferredLayoutSize(parent);
+		}
+
+		@Override
+		public void layoutContainer(Container parent)
+		{
+			Insets in = parent.getInsets();
+			int w = parent.getWidth() - in.left - in.right;
+			int y = in.top;
+			for (Component c : parent.getComponents())
+			{
+				if (c.isVisible())
+				{
+					int h = c.getPreferredSize().height;
+					c.setBounds(in.left, y, w, h);
+					y += h + gap;
+				}
+			}
+		}
 	}
 
 	/** The bank's own brown, behind the potions. */
