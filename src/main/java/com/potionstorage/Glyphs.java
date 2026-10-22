@@ -105,6 +105,32 @@ final class Glyphs
 		g.fill(new Ellipse2D.Double(3.4, 4.1, 1.8, 1.8));
 	}
 
+	/** A crossed-out eye: hidden. */
+	static void hiddenEye(Graphics2D g0, double cx, double cy, Color color)
+	{
+		Graphics2D g = (Graphics2D) g0.create();
+		try
+		{
+			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+			g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+			g.translate(cx - SIZE / 2.0, cy - SIZE / 2.0);
+			g.setColor(color);
+			g.setStroke(new BasicStroke(1.1f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+			Path2D eye = new Path2D.Double();
+			eye.moveTo(1, 5);
+			eye.quadTo(5, -0.6, 9, 5);
+			eye.quadTo(5, 10.6, 1, 5);
+			eye.closePath();
+			g.draw(eye);
+			g.draw(new Ellipse2D.Double(3.8, 3.8, 2.4, 2.4));
+			g.draw(new Line2D.Double(1.6, 1.6, 8.4, 8.4));
+		}
+		finally
+		{
+			g.dispose();
+		}
+	}
+
 	/** A magnifying glass, handle down and right. */
 	private static void magnifier(Graphics2D g)
 	{
