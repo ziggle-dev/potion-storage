@@ -204,8 +204,6 @@ public class PotionStoragePlugin extends Plugin
 	private boolean depositWarned;
 	/** The bank's count of each potion potion storage keeps, as last seen this bank session; null before. */
 	private Map<Integer, Integer> bankPotions;
-	/** Warned this bank session that a deposit went into the bank. */
-	private boolean depositSkipWarned;
 
 	// Learning the order.
 	private boolean learnPending;
@@ -292,7 +290,6 @@ public class PotionStoragePlugin extends Plugin
 		bankSignature = 0;
 		learnedSignature = 0;
 		bankPotions = null;
-		depositSkipWarned = false;
 	}
 
 	@Subscribe
@@ -599,8 +596,8 @@ public class PotionStoragePlugin extends Plugin
 
 	/**
 	 * A potion that potion storage keeps, landing in the bank because "Always deposit to potion storage" is off:
-	 * say what went where, once a bank session. Seen as the bank's stack of it growing - nothing else adds to the
-	 * bank while it is open.
+	 * say what went where, every deposit. Seen as the bank's stack of it growing - nothing else adds to the bank
+	 * while it is open - and a whole inventory deposited is one change, so one message.
 	 */
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged e)
@@ -611,7 +608,7 @@ public class PotionStoragePlugin extends Plugin
 		}
 		Map<Integer, Integer> before = bankPotions;
 		bankPotions = potionCounts(e.getItemContainer());
-		if (before == null || depositSkipWarned || !config.warnDeposits()
+		if (before == null || !config.warnDeposits()
 			|| client.getVarbitValue(VarbitID.BANK_DEPOSITPOTION) != 0)
 		{
 			return;
@@ -629,7 +626,6 @@ public class PotionStoragePlugin extends Plugin
 		{
 			return;
 		}
-		depositSkipWarned = true;
 		String what = added.size() <= DEPOSITS_NAMED ? String.join(", ", added)
 			: String.join(", ", added.subList(0, DEPOSITS_NAMED)) + " and " + (added.size() - DEPOSITS_NAMED) + " more";
 		warnInChat(what + " went into your bank, not potion storage: \"Always deposit to potion storage\" is off. "
