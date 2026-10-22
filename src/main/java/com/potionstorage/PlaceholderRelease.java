@@ -29,6 +29,7 @@ import net.runelite.api.Client;
 import net.runelite.api.Item;
 import net.runelite.api.ItemComposition;
 import net.runelite.api.ItemContainer;
+import net.runelite.api.SoundEffectID;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
@@ -200,6 +201,7 @@ final class PlaceholderRelease
 		if (answer != null)
 		{
 			e.consume();
+			client.playSoundEffect(SoundEffectID.UI_BOOP);
 			popup.close();
 			if (answer)
 			{
@@ -209,6 +211,7 @@ final class PlaceholderRelease
 		else if (e.getParam1() == InterfaceID.Bankmain.RELEASE_PLACEHOLDERS && bankPlaceholders == 0 && ours() > 0)
 		{
 			e.consume();
+			client.playSoundEffect(SoundEffectID.UI_BOOP);
 			popup.open();
 		}
 		else if (e.getParam1() == InterfaceID.Popupoverlay.BUTTON_1 && e.getMenuOption() != null

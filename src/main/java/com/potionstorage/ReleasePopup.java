@@ -45,6 +45,11 @@ final class ReleasePopup
 	private static final String MESSAGE = "This option will release <col=ffb83f>all</col> the placeholders throughout your "
 		+ "<col=ffb83f>whole bank</col>.<br><br>Are you sure?";
 	private static final int TEXT_COLOR = 0xff981f;
+	/** The game's message spaces its lines wider than the font does. */
+	private static final int MESSAGE_LINE_HEIGHT = 15;
+	/** A button's frame, and the one it takes under the mouse: corners, then edges. */
+	private static final int FRAME = 913;
+	private static final int FRAME_HOVER = 921;
 	/** The game's bold and plain 12-point fonts, as its pop-up uses them. */
 	private static final int TITLE_FONT = FontID.BOLD_12;
 	private static final int BODY_FONT = FontID.PLAIN_12;
@@ -93,6 +98,8 @@ final class ReleasePopup
 		Widget message = text(layer, MESSAGE, BODY_FONT, 34, 380, 403, 46);
 		message.setXTextAlignment(WidgetTextAlignment.LEFT);
 		message.setYTextAlignment(WidgetTextAlignment.TOP);
+		message.setLineHeight(MESSAGE_LINE_HEIGHT);
+		message.revalidate();
 		cancel = button(layer, 93, 436, "<col=ff0000>Cancel</col>", "Cancel");
 		confirm = button(layer, 267, 436, "<col=0dc10d>Release them all</col>", "Release them all");
 
@@ -132,15 +139,21 @@ final class ReleasePopup
 		return e.getParam0() == cancel.getIndex() ? false : null;
 	}
 
-	/** A framed button as the game draws one: eight frame parts round a clear middle, and a centred label. */
+	/**
+	 * A framed button as the game draws one: eight frame parts round a clear middle, and a centred label. Under
+	 * the mouse its frame darkens, as the game's does.
+	 */
 	private Widget button(Widget layer, int x, int y, String label, String option)
 	{
-		int[][] frame = {
-			{913, 0, 0, 9, 9}, {914, 103, 0, 9, 9}, {915, 0, 21, 9, 9}, {916, 103, 21, 9, 9},
-			{917, 0, 9, 9, 12}, {918, 9, 0, 94, 9}, {919, 103, 9, 9, 12}, {920, 9, 21, 94, 9}};
-		for (int[] f : frame)
+		// Sprite FRAME + n, at x, y, w, h: four corners, then the left, top, right and bottom edges.
+		int[][] parts = {
+			{0, 0, 0, 9, 9}, {1, 103, 0, 9, 9}, {2, 0, 21, 9, 9}, {3, 103, 21, 9, 9},
+			{4, 0, 9, 9, 12}, {5, 9, 0, 94, 9}, {6, 103, 9, 9, 12}, {7, 9, 21, 94, 9}};
+		Widget[] frame = new Widget[parts.length];
+		for (int i = 0; i < parts.length; i++)
 		{
-			sprite(layer, f[0], true, x + f[1], y + f[2], f[3], f[4]);
+			int[] f = parts[i];
+			frame[i] = sprite(layer, FRAME + f[0], true, x + f[1], y + f[2], f[3], f[4]);
 		}
 		Widget w = text(layer, label, BODY_FONT, x, y, 112, 30);
 		w.setAction(0, option);
@@ -148,7 +161,17 @@ final class ReleasePopup
 		w.setOnOpListener((JavaScriptCallback) ev ->
 		{
 		});
+		w.setOnMouseOverListener((JavaScriptCallback) ev -> frame(frame, FRAME_HOVER));
+		w.setOnMouseLeaveListener((JavaScriptCallback) ev -> frame(frame, FRAME));
 		return w;
+	}
+
+	private static void frame(Widget[] frame, int base)
+	{
+		for (int i = 0; i < frame.length; i++)
+		{
+			frame[i].setSpriteId(base + i);
+		}
 	}
 
 	private static Widget sprite(Widget layer, int spriteId, boolean tiling, int x, int y, int w, int h)
