@@ -751,12 +751,12 @@ public class PotionStoragePlugin extends Plugin
 				if (k.id() > 0)
 				{
 					String name = client.getItemDefinition(k.iconId()).getName().replaceAll(DOSE_SUFFIX, "");
-					potions.add(new VisibilityPanel.Potion(k.id(), k.iconId(), name, store.doses(k), k.unfinished));
+					potions.add(new VisibilityPanel.Potion(k.id(), k.iconId(), name, store.doses(k), k.fullDose, k.unfinished));
 				}
 			}
 		}
 		VisibilityPanel.Switches switches = new VisibilityPanel.Switches(config.inBank(), config.inTagTabs(),
-			config.inSearch(), config.showUnfinished());
+			config.inSearch(), config.showUnfinished(), config.sidebarCount() == SidebarCount.DOSES);
 		SwingUtilities.invokeLater(() -> sidebar.update(potions, switches));
 	}
 

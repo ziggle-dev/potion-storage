@@ -90,6 +90,8 @@ final class PotionStore
 		final List<Integer> doseIds;
 		/** The dose numbers it comes in, for a Doses submenu: empty when there is only one, as for an unfinished potion. */
 		final List<Integer> doses;
+		/** The doses in one whole potion: its largest dose, 1 for an unfinished potion. */
+		final int fullDose;
 
 		Kind(int index, int enumId, EnumComposition potionEnum, boolean unfinished)
 		{
@@ -110,6 +112,7 @@ final class PotionStore
 			}
 			this.doseIds = Collections.unmodifiableList(ids);
 			this.doses = numbers.size() > 1 && !unfinished ? Collections.unmodifiableList(numbers) : Collections.emptyList();
+			this.fullDose = numbers.isEmpty() ? 1 : numbers.get(numbers.size() - 1);
 		}
 
 		/** What the visibility settings know it by: its smallest dose's item id, which no other kind shares. */

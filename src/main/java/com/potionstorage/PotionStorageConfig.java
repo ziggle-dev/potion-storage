@@ -173,6 +173,17 @@ public interface PotionStorageConfig extends Config
 		return true;
 	}
 
+	@ConfigItem(
+		keyName = "sidebarCount",
+		name = "Sidebar counts",
+		description = "Count each potion in the sidebar panel in full potions or in doses. Hovering a potion shows the other",
+		position = 5
+	)
+	default SidebarCount sidebarCount()
+	{
+		return SidebarCount.POTIONS;
+	}
+
 	// The sidebar panel's choices: the potions hidden in each place (PotionVisibility), as lists of item ids.
 
 	@ConfigItem(keyName = "hiddenInBank", name = "", description = "", hidden = true)

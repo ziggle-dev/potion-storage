@@ -80,15 +80,40 @@ final class VisibilityPanel extends PluginPanel
 		final int iconId;
 		final String name;
 		final int doses;
+		/** The doses in one whole potion. */
+		final int fullDose;
 		final boolean unfinished;
 
-		Potion(int id, int iconId, String name, int doses, boolean unfinished)
+		Potion(int id, int iconId, String name, int doses, int fullDose, boolean unfinished)
 		{
 			this.id = id;
 			this.iconId = iconId;
 			this.name = name;
 			this.doses = doses;
+			this.fullDose = Math.max(fullDose, 1);
 			this.unfinished = unfinished;
+		}
+
+		int fullPotions()
+		{
+			return doses / fullDose;
+		}
+
+		/** "262 potions + 3 doses", or "262 potions" when there are no doses over. */
+		String potionsText()
+		{
+			int left = doses - fullPotions() * fullDose;
+			return plural(fullPotions(), "potion") + (left > 0 ? " + " + plural(left, "dose") : "");
+		}
+
+		String dosesText()
+		{
+			return plural(doses, "dose");
+		}
+
+		private static String plural(int n, String one)
+		{
+			return String.format("%,d %s%s", n, one, n == 1 ? "" : "s");
 		}
 	}
 
@@ -100,13 +125,16 @@ final class VisibilityPanel extends PluginPanel
 		final boolean inTagTabs;
 		final boolean inSearch;
 		final boolean unfinished;
+		/** Count in doses rather than full potions. */
+		final boolean countDoses;
 
-		Switches(boolean inBank, boolean inTagTabs, boolean inSearch, boolean unfinished)
+		Switches(boolean inBank, boolean inTagTabs, boolean inSearch, boolean unfinished, boolean countDoses)
 		{
 			this.inBank = inBank;
 			this.inTagTabs = inTagTabs;
 			this.inSearch = inSearch;
 			this.unfinished = unfinished;
+			this.countDoses = countDoses;
 		}
 	}
 
@@ -147,7 +175,7 @@ final class VisibilityPanel extends PluginPanel
 
 	private Mode mode = Mode.ALL;
 	private List<Potion> potions = new ArrayList<>();
-	private Switches switches = new Switches(true, true, true, true);
+	private Switches switches = new Switches(true, true, true, true, false);
 
 	VisibilityPanel(IntFunction<AsyncBufferedImage> icons, PotionVisibility visibility, Runnable onOpen)
 	{
@@ -166,6 +194,12 @@ final class VisibilityPanel extends PluginPanel
 			public Set<Where> editing()
 			{
 				return mode.places;
+			}
+
+			@Override
+			public boolean countDoses()
+			{
+				return switches.countDoses;
 			}
 
 			@Override

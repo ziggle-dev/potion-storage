@@ -29,7 +29,6 @@ import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Composite;
 import java.awt.Dimension;
-import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
@@ -52,16 +51,16 @@ import net.runelite.client.ui.FontManager;
 import net.runelite.client.util.AsyncBufferedImage;
 
 /**
- * One potion in the sidebar panel: its icon, the doses stored, and a strip of three switches under it - the
- * bank, tag tabs, search - lit where it is shown. A click on the icon shows or hides it in whatever places the
+ * One potion in the sidebar panel: its icon, the doses stored, and three small pictures under it - the bank,
+ * tag tabs, search - lit where it is shown. A click on the icon shows or hides it in whatever places the
  * panel is editing; a click on a switch, in that place alone; a right-click offers every place by name.
  */
 final class PotionTile extends JComponent
 {
 	static final int WIDTH = 40;
-	static final int HEIGHT = 52;
+	static final int HEIGHT = 54;
 	private static final int ICON_H = 38;
-	private static final int STRIP_Y = ICON_H + 2;
+	private static final int STRIP_Y = ICON_H + 1;
 	private static final int STRIP_H = HEIGHT - STRIP_Y - 2;
 	private static final int ARC = 6;
 
@@ -72,9 +71,9 @@ final class PotionTile extends JComponent
 
 	private static final Color STACK_YELLOW = new Color(255, 255, 0);
 	private static final Color SWITCH_ON = ColorScheme.BRAND_ORANGE;
-	private static final Color SWITCH_ON_HOVER = new Color(240, 165, 40);
-	private static final Color SWITCH_OFF = ColorScheme.DARK_GRAY_COLOR;
-	private static final Color SWITCH_OFF_HOVER = ColorScheme.MEDIUM_GRAY_COLOR;
+	private static final Color SWITCH_ON_HOVER = new Color(255, 190, 70);
+	private static final Color SWITCH_OFF = new Color(85, 85, 85);
+	private static final Color SWITCH_OFF_HOVER = ColorScheme.LIGHT_GRAY_COLOR;
 
 	/** What the tile asks of whoever keeps the settings. */
 	interface Owner
@@ -83,6 +82,9 @@ final class PotionTile extends JComponent
 
 		/** The places a click on the icon changes. */
 		Set<Where> editing();
+
+		/** Count in doses; otherwise in full potions. */
+		boolean countDoses();
 
 		void set(int potionId, Set<Where> places, boolean show);
 	}
@@ -217,7 +219,10 @@ final class PotionTile extends JComponent
 				+ (shown.contains(w) ? "hide" : "show");
 		}
 		StringBuilder b = new StringBuilder("<html><b>").append(potion.name).append("</b><br>");
-		b.append(potion.doses).append(potion.doses == 1 ? " dose" : " doses").append(" stored");
+		// The count the tile shows, then the other.
+		boolean doses = owner.countDoses();
+		b.append(doses ? potion.dosesText() : potion.potionsText())
+			.append(" <font color='#a5a5a5'>(").append(doses ? potion.potionsText() : potion.dosesText()).append(")</font>");
 		List<Where> all = Arrays.asList(Where.values());
 		List<Where> in = all.stream().filter(shown::contains).collect(Collectors.toList());
 		List<Where> out = all.stream().filter(w -> !shown.contains(w)).collect(Collectors.toList());
@@ -279,7 +284,8 @@ final class PotionTile extends JComponent
 	{
 		g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
 		g.setFont(FontManager.getRunescapeSmallFont());
-		String text = potion.doses >= 100_000 ? potion.doses / 1000 + "K" : String.valueOf(potion.doses);
+		int n = owner.countDoses() ? potion.doses : potion.fullPotions();
+		String text = n >= 100_000 ? n / 1000 + "K" : String.valueOf(n);
 		int y = g.getFontMetrics().getAscent();
 		g.setColor(Color.BLACK);
 		g.drawString(text, 3, y + 1);
@@ -287,10 +293,12 @@ final class PotionTile extends JComponent
 		g.drawString(text, 2, y);
 	}
 
+	/**
+	 * The three places as pictures along the bottom: orange where the potion is shown, grey where it is not.
+	 * The one under the mouse lights up; with one place being edited, its picture sits on a lighter patch.
+	 */
 	private void paintSwitches(Graphics2D g, Set<Where> shown, Set<Where> editing)
 	{
-		g.setFont(FontManager.getRunescapeSmallFont());
-		FontMetrics fm = g.getFontMetrics();
 		Where[] places = Where.values();
 		int n = places.length;
 		for (int i = 0; i < n; i++)
@@ -299,37 +307,20 @@ final class PotionTile extends JComponent
 			Rectangle r = switchBounds(i, n, getWidth());
 			boolean on = shown.contains(w);
 			boolean hot = hover && hoverSwitch == i;
-			g.setColor(on ? (hot ? SWITCH_ON_HOVER : SWITCH_ON) : (hot ? SWITCH_OFF_HOVER : SWITCH_OFF));
-			g.fillRoundRect(r.x, r.y, r.width, r.height, 4, 4);
-			if (editing.contains(w) && editing.size() < n)
+			if (hot || (editing.contains(w) && editing.size() < n))
 			{
-				// The place the panel is editing, picked out.
-				g.setColor(Color.WHITE);
-				g.drawRoundRect(r.x, r.y, r.width - 1, r.height - 1, 4, 4);
+				g.setColor(hot ? ColorScheme.DARKER_GRAY_HOVER_COLOR : ColorScheme.DARK_GRAY_COLOR);
+				g.fillRoundRect(r.x, r.y, r.width, r.height, 4, 4);
 			}
-			String letter = letter(w);
-			g.setColor(on ? Color.BLACK : ColorScheme.LIGHT_GRAY_COLOR);
-			g.drawString(letter, r.x + (r.width - fm.stringWidth(letter)) / 2 + 1, r.y + (r.height + fm.getAscent()) / 2 - 1);
+			Color c = on ? (hot ? SWITCH_ON_HOVER : SWITCH_ON) : (hot ? SWITCH_OFF_HOVER : SWITCH_OFF);
+			Glyphs.paint(g, w, r.getCenterX(), r.getCenterY(), c);
 		}
 	}
 
 	private static Rectangle switchBounds(int i, int n, int width)
 	{
-		int gap = 2;
+		int gap = 1;
 		int w = (width - 4 - gap * (n - 1)) / n;
 		return new Rectangle(2 + i * (w + gap), STRIP_Y, w, STRIP_H);
-	}
-
-	static String letter(Where w)
-	{
-		switch (w)
-		{
-			case BANK:
-				return "B";
-			case TAGS:
-				return "T";
-			default:
-				return "S";
-		}
 	}
 }
