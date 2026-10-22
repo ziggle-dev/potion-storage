@@ -176,6 +176,7 @@ public class PotionStoragePlugin extends Plugin
 	private BankView view;
 	private BankDrags drags;
 	private StorePanel panel;
+	private StoreButton storeButton;
 	private PotionVisibility visibility;
 	private VisibilityPanel sidebar;
 	private NavigationButton sidebarButton;
@@ -222,6 +223,7 @@ public class PotionStoragePlugin extends Plugin
 		view = new BankView(client, config, savedOrder);
 		drags = new BankDrags(client, savedOrder, this::relayout);
 		panel = new StorePanel(client, config, pluginManager, bankTags, this::relayout);
+		storeButton = new StoreButton(client);
 		visibility = new PotionVisibility(key -> configManager.getConfiguration(PotionStorageConfig.GROUP, key), this::saveVisibility);
 		sidebar = new VisibilityPanel(itemManager::getImage, visibility, () -> clientThread.invokeLater(this::sendPotions),
 			doses -> configManager.setConfiguration(PotionStorageConfig.GROUP, "sidebarCount", doses ? SidebarCount.DOSES : SidebarCount.POTIONS));
@@ -249,6 +251,7 @@ public class PotionStoragePlugin extends Plugin
 		clientThread.invokeLater(() ->
 		{
 			panel.remove();
+			storeButton.restore();
 			resetSession();
 			savedOrder.reset();
 			layoutIfBankView();
@@ -336,7 +339,13 @@ public class PotionStoragePlugin extends Plugin
 
 	private void onScriptPreFiredBeforeBankTags(ScriptPreFired e)
 	{
-		if (e.getScriptId() != ScriptID.BANKMAIN_FINISHBUILDING || !config.addToLayouts())
+		if (e.getScriptId() != ScriptID.BANKMAIN_FINISHBUILDING)
+		{
+			return;
+		}
+		// Before the Bank Tags plugin sizes its tab column, which it stops above a shown pop-out tab.
+		storeButton.apply(config.hideStoreButton());
+		if (!config.addToLayouts())
 		{
 			return;
 		}
@@ -604,6 +613,7 @@ public class PotionStoragePlugin extends Plugin
 		if (e.getGroupId() == InterfaceID.BANKMAIN && e.isUnload())
 		{
 			resetSession();
+			storeButton.forget();
 		}
 	}
 
@@ -692,12 +702,17 @@ public class PotionStoragePlugin extends Plugin
 
 	// ---- the potion store's panel ----
 
-	@Subscribe
+	/** Before the Bank Tags plugin (0), which sizes its tab column after the pop-out tab is drawn. */
+	@Subscribe(priority = BEFORE_BANK_TAGS)
 	public void onScriptPostFired(ScriptPostFired e)
 	{
 		if (e.getScriptId() == ScriptID.POTIONSTORE_BUILD || e.getScriptId() == ScriptID.POTIONSTORE_DOSE_CHANGE)
 		{
 			panel.refresh();
+		}
+		else if (e.getScriptId() == ScriptID.BANKMAIN_POPUP_TAB_DRAW)
+		{
+			storeButton.apply(config.hideStoreButton());
 		}
 	}
 

@@ -92,6 +92,18 @@ public interface PotionStorageConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "hideStoreButton",
+		name = "Hide potion storage button",
+		description = "Hide the potion storage button at the foot of the bank's tag tabs. Stored potions are still shown, withdrawn and, with \"Always deposit to potion storage\" on, deposited as usual; turn this off to open potion storage itself",
+		position = 3,
+		section = BANK_VIEW
+	)
+	default boolean hideStoreButton()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "inTagTabs",
 		name = "Show in tag tabs",
 		description = "List a tag's stored potions after the bank's items in its tag tab, for tag tabs without a layout",
